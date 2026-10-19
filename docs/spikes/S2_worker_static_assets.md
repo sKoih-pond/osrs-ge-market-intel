@@ -2,7 +2,7 @@
 
 - **Decides:** ADR-0012 (dashboard hosting)
 - **Time box:** half a working day
-- **Status:** Planned. Not started: needs the prerequisites below.
+- **Status:** Done, 2026-10-20. Results: `S2_results.md` (GO for ADR-0012).
 
 ## Question
 
