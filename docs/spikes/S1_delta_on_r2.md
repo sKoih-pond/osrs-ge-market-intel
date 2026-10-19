@@ -2,7 +2,7 @@
 
 - **Decides:** ADR-0003 (table format), version pins for ADR-0011 (Spark)
 - **Time box:** 1 working day. Stop at the time box and write up what is known.
-- **Status:** Planned. Not started: needs the prerequisites below.
+- **Status:** Done, 2026-10-20. Results: `S1_results.md` (GO for ADR-0003).
 
 ## Question
 

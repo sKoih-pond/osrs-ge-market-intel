@@ -8,7 +8,7 @@ Status values: **Accepted**, **Accepted, pending spike** (holds unless the named
 |---|---|---|
 | [0001](0001-runtime-actions-now-vm-after-v1.md) | Runtime: GitHub Actions now, always-on VM after v1 | Accepted |
 | [0002](0002-storage-cloudflare-r2.md) | Storage: Cloudflare R2, private lake and public bucket | Accepted, amended by 0015 |
-| [0003](0003-table-format-delta-lake.md) | Table format: Delta Lake | Accepted, pending spike S1; amended by 0015 |
+| [0003](0003-table-format-delta-lake.md) | Table format: Delta Lake | Accepted (S1 passed); amended by 0015 |
 | [0004](0004-orchestration-airflow-at-phase-c.md) | Orchestration: Airflow-ready tasks now, Airflow 3 at Phase C | Accepted |
 | [0005](0005-ingestion-grain-backfill-etiquette.md) | Ingestion grain, backfill scope and API etiquette | Accepted, amended by 0015 |
 | [0006](0006-regimes-as-data.md) | Market and measurement regimes as first-class data | Accepted |

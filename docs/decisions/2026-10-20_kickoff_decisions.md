@@ -56,4 +56,7 @@ This replaces the milestone sequence in the discovery report, section 7. Accepta
 
 ## Amendments
 
+- **2026-10-20, decision 4 (backfill source).** Historical data comes from the Kaggle dump `antonygarand/osrs-ge-5m` v1, validated month by month against the Wiki API, with gaps filled from the API (ADR-0005 note; assessment in `docs/research/`). The Discord post is now a courtesy plus two questions rather than a prerequisite for heavy load.
+- **2026-10-20, R2 key scope.** Sylvester keeps one Object Read & Write key across all R2 buckets while the account holds only this project's buckets, and will rotate keys when another project adds buckets. ADR-0015 assumed bucket-limited keys; this is an accepted, recorded deviation.
+
 - **2026-10-20, ADR-0015 (Sylvester: R2 must stay inside the free limit, prevention not alerts).** Nothing in R2 is ever public: the public bucket from decision 10 is dropped and published data ships as Workers static assets (decision 9). Standard storage class only; `bronze/` expires after 30 days; backfill raw responses stay on local disk; a usage check before every run halts at 50% of any free allowance or 6 GB stored; per-run operation caps; Spark and backfills work on local copies.
