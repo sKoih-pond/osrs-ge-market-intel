@@ -1,6 +1,8 @@
 # ADR-0012: Dashboard served by a Cloudflare Worker at kohstack.tech/ge/
 
-- **Status:** Accepted, pending spike S2 (`docs/spikes/S2_worker_static_assets.md`); amended by ADR-0015
+- **Status:** Accepted; spike S2 passed on 2026-10-20 (`docs/spikes/S2_results.md`); amended by ADR-0015
+
+> **Confirmed by S2 (2026-10-20):** an assets-only Worker serves a kohstack.tech path without touching other pages, and the zone's 30-day cache rule does not pin its responses (new content was live 1 s after a redeploy), so no cache-rule change is needed. Decisions from the spike: `not_found_handling: "404-page"` with query-string item pages (the single-page-app fallback turns missing data files into 200 HTML); four routes, exact and wildcard on both `kohstack.tech` and `www`; `_headers` must allow `https://static.cloudflareinsights.com` in `script-src`. Hourly data redeploys upload only changed files (about 16 s). View Transitions are carried to M6 for real-device checks; preview links need a `workers.dev` subdomain (M1 decision).
 
 > **Amended by ADR-0015 (2026-10-20):** published data is shipped inside the Worker's static assets and redeployed by the pipeline. It is never read from R2: no R2 custom domain and no Worker R2 binding on a public route, because those make visitor traffic billable. Fallback if hourly redeploys prove unsuitable: publish data files to the VentraIP host as `/sgn/` does.
 - **Date:** 2026-10-20
