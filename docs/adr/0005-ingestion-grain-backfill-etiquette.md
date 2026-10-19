@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decisions 4 and 5)
 
+> **Amended by ADR-0015 (2026-10-20):** backfill raw responses are stored on local disk with their SHA-256, not uploaded to R2; only the typed tables built from them are. Live raw responses go to `bronze/` in R2 and expire after 30 days.
+
 ## Context
 
 Measured on 19 Oct 2026: `/1h` is an exact roll-up of twelve `/5m` buckets (volumes matched on 3,234 of 3,234 items; high-side VWAP within 0.1% on 2,638 of 2,640). Data starts on 8 Mar 2021. Buckets appear about 10 to 20 seconds after they close and are cached by Cloudflare (`s-maxage=300`). The un-timestamped "latest" responses can lag by a bucket because of caching. The Wiki has no hard rate limit but asks for a descriptive User-Agent, blocks default library User-Agents, and asks real-time pipeline builders to join #api-discussion on its Discord.

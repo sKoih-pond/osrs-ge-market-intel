@@ -53,3 +53,7 @@ This replaces the milestone sequence in the discovery report, section 7. Accepta
 - Workers static assets under a path prefix alongside the zone's existing cache rules (M0 test).
 - The current Oracle Always Free allowance and idle-reclamation thresholds (before M7).
 - GitHub Actions terms for scheduled data jobs (watch for changes; fallback is moving Phase C earlier).
+
+## Amendments
+
+- **2026-10-20, ADR-0015 (Sylvester: R2 must stay inside the free limit, prevention not alerts).** Nothing in R2 is ever public: the public bucket from decision 10 is dropped and published data ships as Workers static assets (decision 9). Standard storage class only; `bronze/` expires after 30 days; backfill raw responses stay on local disk; a usage check before every run halts at 50% of any free allowance or 6 GB stored; per-run operation caps; Spark and backfills work on local copies.

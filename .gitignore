@@ -25,6 +25,6 @@ node_modules/
 .wrangler/
 
 # Spike scratch areas
-spikes/
+/spikes/
 
 .DS_Store

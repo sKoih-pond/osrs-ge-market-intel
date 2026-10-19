@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 8, option 4)
 
+> **Amended by ADR-0015 (2026-10-20):** weekly compaction and `VACUUM` with 7-day retention keep old file versions from accumulating, so time travel reaches back 7 days. Training-set reproducibility rests on immutable partitions, the recorded table version and a row hash.
+
 ## Context
 
 Three engines will touch the same tables: a Python hourly writer, DuckDB (and dbt-duckdb) for transforms and reads, and Spark for the backtest grid and full-history reprocessing (ADR-0011). The brief asks for reproducible historical snapshots. Plain Parquet folders need a hand-written manifest to show which files are complete, and offer no row-level edits, safe compaction or time travel.

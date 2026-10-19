@@ -17,7 +17,7 @@
 | Task type | Verifiable? | Reversible? | Stakes | Mode |
 |---|---|---|---|---|
 | Pure functions (tax, fills, grades) | Yes, unit and property tests | Yes | Medium (wrong numbers mislead players) | Automate, verify against tests |
-| Ingestion and storage code | Yes, contract, idempotency and parity tests | Mostly (raw data retained 90 days) | Medium | Automate with review |
+| Ingestion and storage code | Yes, contract, idempotency and parity tests | Mostly (live raw data retained 30 days; backfill raw kept locally) | Medium | Automate with review |
 | Backfill runs against the Wiki API | Partly (completeness checks) | No (load on a community service) | High for the relationship | Sylvester starts it, after the Discord post |
 | Evaluation design and gate thresholds | No (judgement) | No once results are seen | High (credibility) | Human only |
 | Public copy, claims, case study | Partly | Yes, but reputational | High | Augmentation, Sylvester signs off |

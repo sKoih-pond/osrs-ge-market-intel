@@ -1,6 +1,8 @@
 # ADR-0012: Dashboard served by a Cloudflare Worker at kohstack.tech/ge/
 
-- **Status:** Accepted, pending spike S2 (`docs/spikes/S2_worker_static_assets.md`)
+- **Status:** Accepted, pending spike S2 (`docs/spikes/S2_worker_static_assets.md`); amended by ADR-0015
+
+> **Amended by ADR-0015 (2026-10-20):** published data is shipped inside the Worker's static assets and redeployed by the pipeline. It is never read from R2: no R2 custom domain and no Worker R2 binding on a public route, because those make visitor traffic billable. Fallback if hourly redeploys prove unsuitable: publish data files to the VentraIP host as `/sgn/` does.
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 9)
 
