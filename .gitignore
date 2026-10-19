@@ -1,0 +1,30 @@
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+
+# Secrets: never commit (ADR-0014)
+.env
+.env.*
+
+# Local data and engines (raw archive lives in R2, not git)
+data/
+*.duckdb
+*.duckdb.wal
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Dashboard and Cloudflare tooling
+node_modules/
+.wrangler/
+
+# Spike scratch areas
+spikes/
+
+.DS_Store

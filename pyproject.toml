@@ -1,0 +1,36 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "osrs-ge-market-intel"
+dynamic = ["version"]
+description = "Tax-aware trade ideas and anomaly alerts for the OSRS Grand Exchange, with measured reliability."
+readme = "README.md"
+requires-python = ">=3.12"
+authors = [{ name = "Sylvester Koh" }]
+# Code: MIT (ADR-0014). Sample data is CC BY-NC-SA 3.0 and not covered by it (ADR-0013).
+license = "MIT"
+license-files = ["LICENSE"]
+dependencies = []
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.6"]
+
+[tool.hatch.version]
+path = "src/ge_intel/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ge_intel"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+extend-exclude = ["docs/research/probes"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
