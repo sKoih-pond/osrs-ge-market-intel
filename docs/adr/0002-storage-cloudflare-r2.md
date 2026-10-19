@@ -1,8 +1,10 @@
 # ADR-0002: Storage: Cloudflare R2, private lake and public bucket
 
-- **Status:** Accepted
+- **Status:** Accepted, amended by ADR-0015
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decisions 2 and 10)
+
+> **Amended by ADR-0015 (2026-10-20):** there is no public bucket. `ge-intel-public` is dropped and published data ships as Workers static assets. `bronze/` expires after 30 days, not 90. Backfill raw responses stay on local disk. Every object is Standard class.
 
 ## Context
 

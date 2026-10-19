@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 10)
 
+> **Amended by ADR-0015 (2026-10-20):** the published data contract (`v1/`) lives in the dashboard Worker's static assets, not in a public R2 bucket. What is published is unchanged.
+
 ## Context
 
 OSRS Wiki content is licensed CC BY-NC-SA 3.0 (non-commercial, attribution, share-alike). The Wiki's API page grants use "for interesting projects and community-facing tools" but states no separate data licence. Since 30 Sep 2026 the live feed comes from Jagex. Republishing the whole raw archive would amount to redistributing their dataset. Reviewers benefit from being able to run the code on real data.

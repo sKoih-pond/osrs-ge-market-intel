@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 8)
 
+> **Amended by ADR-0015 (2026-10-20):** Spark jobs copy the partitions they need from R2 to local disk once, compute locally, and upload results as a few large files, so Spark's many small `HEAD` and `LIST` calls never reach R2. Each job runs under its own operation budget and timeout.
+
 ## Context
 
 Data volume is moderate: about 145M hourly rows of history and about 200M 5-minute rows added per year. DuckDB processes this on one machine and runs the hourly path in seconds. Two workloads have a different shape from the hourly path:
