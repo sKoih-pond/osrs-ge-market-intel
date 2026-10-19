@@ -5,6 +5,8 @@
 - **Decided by:** Sylvester ("ensure it stays within the free limit; an alert after billing is no use")
 - **Amends:** ADR-0002, ADR-0003, ADR-0005, ADR-0011, ADR-0012 (each carries a note)
 
+> **Measured in spike S1 (2026-10-20):** a batched hourly write costs about 10 Class A and 15 to 50 Class B operations per table (12 separate commits cost about 7 times more); about 8 tables per run projects to roughly 65,000 Class A (6.5%) and 300,000 Class B (3%) a month, so the per-run caps of 500 / 5,000 hold with 5 to 10 times headroom. Per-minute analytics are complete only about 5 minutes after the fact, so the post-run check reads the previous run's window at the start of the next run. The storage analytics lag further, so the per-run bytes cap is the effective storage control between snapshots. Details: `docs/spikes/S1_results.md`.
+
 ## Context
 
 R2 has no hard spending cap. Cloudflare's budget alerts are informational, fire the day after a threshold is crossed, and do not pause usage. Prevention therefore has to come from the design.

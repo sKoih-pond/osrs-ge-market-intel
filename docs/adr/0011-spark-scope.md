@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 8)
 
+> **Spike S1 (2026-10-20):** Spark 4.2.0 with delta-spark 4.4.1 and hadoop-aws 3.5.0 reads, appends to, compacts and vacuums the delta-rs tables on R2 over S3A without changing the protocol. Requires JDK 17 and `PYSPARK_PYTHON` set to the project interpreter. A 25-row append with compaction took 3 minutes 19 seconds and about 66 Class A and 872 Class B operations, which confirms the local-copy rule below and keeping Spark out of the hourly path.
+
 > **Amended by ADR-0015 (2026-10-20):** Spark jobs copy the partitions they need from R2 to local disk once, compute locally, and upload results as a few large files, so Spark's many small `HEAD` and `LIST` calls never reach R2. Each job runs under its own operation budget and timeout.
 
 ## Context

@@ -1,6 +1,8 @@
 # ADR-0003: Table format: Delta Lake
 
-- **Status:** Accepted, pending spike S1 (`docs/spikes/S1_delta_on_r2.md`)
+- **Status:** Accepted; spike S1 passed on 2026-10-20 (`docs/spikes/S1_results.md`)
+
+> **Confirmed by S1 (2026-10-20):** delta-rs, DuckDB, dbt-duckdb and Spark all read and write the shared tables on R2. Rules adopted: one commit per table per run; checkpoint every run; gold tables written by delta-rs with overwrite or replace-where (DuckDB `INSERT` is append-only); `vacuum(full=True)` so crashed writers' files are cleaned; protocol baseline reader 1 / writer 2 with no table features, tables created by delta-rs; `aws_conditional_put: etag` set explicitly. Pins: deltalake 1.6.6, duckdb 1.5.6, dbt-duckdb 1.11.0, pyspark 4.2.0, delta-spark 4.4.1, hadoop-aws 3.5.0, JDK 17.
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 8, option 4)
 
