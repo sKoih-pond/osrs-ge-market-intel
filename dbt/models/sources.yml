@@ -1,0 +1,16 @@
+version: 2
+
+sources:
+  - name: silver
+    description: Typed tables written by the ingestion tasks (delta-rs), read in place.
+    config:
+      external_location: "delta_scan('{{ var('lake_root') }}/silver/{name}')"
+    tables:
+      - name: prices_5m
+        description: One row per item per 5-minute bucket in which it traded (ADR-0005).
+      - name: wiki_5m_buckets
+        description: Bucket manifest, the completeness record; status ok or outage.
+      - name: latest_snapshots
+        description: Hourly /latest snapshots, used only for staleness.
+      - name: item_dim
+        description: Item dimension from daily /mapping snapshots, slowly changing type 2.

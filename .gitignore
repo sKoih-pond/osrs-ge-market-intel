@@ -28,3 +28,12 @@ node_modules/
 /spikes/
 
 .DS_Store
+
+# dbt build output (the pipeline builds into a temporary folder)
+dbt/target/
+dbt/logs/
+dbt/dbt_packages/
+
+# Local Claude Code settings
+.claude/
+dbt/.user.yml

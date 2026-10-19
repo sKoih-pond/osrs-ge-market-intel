@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en-AU">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>GE pipeline status | kohstack</title>
+  <meta name="description" content="Freshness and completeness of the GE screener's data over the last 30 days.">
+  <link rel="stylesheet" href="/ge/style.css">
+  <script src="/ge/app.js" defer></script>
+</head>
+<body data-page="status">
+  <a class="skip" href="#figures">Skip to the figures</a>
+  <div id="stale" class="banner" role="status" hidden></div>
+  <header class="site">
+    <p class="crumbs"><a href="/">kohstack</a> / <a href="/ge/">GE market intelligence</a> / Status</p>
+    <h1>Pipeline status</h1>
+    <p class="lede">The pipeline runs every hour on GitHub Actions. The objective: at least 95% of hours published within 45 minutes of the hour closing.</p>
+    <p id="asof" class="asof">Loading the latest status…</p>
+    <nav aria-label="Pages"><a href="/ge/">Back to the trade ideas</a></nav>
+  </header>
+  <main id="figures">
+    <section aria-labelledby="last-h">
+      <h2 id="last-h">Latest run</h2>
+      <dl id="last" class="facts"></dl>
+    </section>
+    <section aria-labelledby="sum-h">
+      <h2 id="sum-h">Last 30 days</h2>
+      <dl id="totals" class="facts"></dl>
+    </section>
+    <section aria-labelledby="days-h">
+      <h2 id="days-h">By day (UTC)</h2>
+      <div class="scroll" tabindex="0" role="region" aria-labelledby="days-h">
+        <table id="days">
+          <thead><tr><th scope="col">Date</th><th scope="col">Hours on time</th><th scope="col">Buckets recorded</th><th scope="col">Outage buckets</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="note">A bucket is one 5-minute slice of trade data. An outage bucket was recorded but the source published far fewer items than usual (for example during a game update), so it is not read as a quiet market.</p>
+    </section>
+  </main>
+  <footer class="site">
+    <p>Prices: OSRS Wiki real-time prices API, licensed <a href="https://creativecommons.org/licenses/by-nc-sa/3.0/">CC BY-NC-SA 3.0</a>. <a href="/ge/data/v1/status.json">Status data (v1 contract)</a></p>
+  </footer>
+</body>
+</html>

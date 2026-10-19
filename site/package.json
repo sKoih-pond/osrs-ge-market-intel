@@ -1,0 +1,9 @@
+{
+  "name": "ge-dashboard",
+  "private": true,
+  "description": "Deploy tooling for the assets-only Worker at kohstack.tech/ge/",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "4.150.0"
+  }
+}

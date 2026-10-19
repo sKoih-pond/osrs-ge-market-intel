@@ -6,8 +6,15 @@ Two controls:
 - `RunBudget` counts the R2 requests our own code makes during a run and refuses the
   request that would cross the run's cap, before it is sent.
 
+Engine traffic (delta-rs, DuckDB) never passes through `RunBudget`, so the same analytics
+query also reads the previous run's own window: if that run used more than one run's caps, the
+next run is blocked until someone reviews it and records the run id as acknowledged. Analytics
+settle about 5 minutes after the fact (spike S1), which is why the check happens at the start
+of the next run rather than at the end of the run itself.
+
 Run `python -m ge_intel.cost_guard` with CLOUDFLARE_ACCOUNT_ID and an Account Analytics
-Read token in CLOUDFLARE_ANALYTICS_TOKEN. Exit codes: 0 allowed, 2 usage unreadable, 3 halted.
+Read token in CLOUDFLARE_ANALYTICS_TOKEN (month-to-date check only; `ge-intel guard` adds the
+previous-run check). Exit codes: 0 allowed, 2 usage unreadable, 3 halted.
 """
 
 from __future__ import annotations
@@ -81,6 +88,15 @@ class Usage:
     class_b: int
     storage_bytes: int
     as_of: datetime
+    # Class A and B operations on the project bucket during the previous run's window.
+    previous_window: tuple[int, int] | None = None
+
+
+@dataclass(frozen=True)
+class PreviousRun:
+    run_id: str
+    started_at: datetime
+    finished_at: datetime
 
 
 @dataclass(frozen=True)
@@ -154,11 +170,67 @@ class RunBudget:
         self.class_a, self.class_b, self.bytes_written = a, b, written
 
 
+SETTLE = timedelta(minutes=6)  # analytics complete about 5 minutes after the fact
+
+
+def check_previous_run(
+    usage: Usage,
+    previous: PreviousRun | None,
+    acknowledged_run_id: str | None = None,
+    caps: RunBudget | None = None,
+) -> Verdict:
+    """Block if the previous run used more than one run's caps, unless it was acknowledged."""
+    if previous is None or usage.previous_window is None:
+        return Verdict(True, (), ())
+    caps = caps or RunBudget()
+    a, b = usage.previous_window
+    warnings: list[str] = []
+    if usage.as_of - previous.finished_at < SETTLE:
+        warnings.append(
+            f"previous run {previous.run_id} ended under 6 minutes ago; counts may be low"
+        )
+    over = []
+    if a > caps.max_class_a:
+        over.append(f"Class A {a:,} > {caps.max_class_a:,}")
+    if b > caps.max_class_b:
+        over.append(f"Class B {b:,} > {caps.max_class_b:,}")
+    if not over:
+        return Verdict(True, (), tuple(warnings))
+    if acknowledged_run_id == previous.run_id:
+        warnings.append(
+            f"previous run {previous.run_id} over budget ({'; '.join(over)}), acknowledged"
+        )
+        return Verdict(True, (), tuple(warnings))
+    reason = (
+        f"previous run {previous.run_id} used {'; '.join(over)} per run; review it, then set "
+        f"GE_GUARD_ACK_RUN_ID={previous.run_id} to resume"
+    )
+    return Verdict(False, (reason,), tuple(warnings))
+
+
+def _window_ops(rows: list[dict], bucket: str) -> tuple[int, int]:
+    a = b = 0
+    for row in rows:
+        if row["dimensions"].get("bucketName") != bucket:
+            continue
+        cls = op_class(row["dimensions"]["actionType"])
+        if cls == "A":
+            a += row["sum"]["requests"]
+        elif cls == "B":
+            b += row["sum"]["requests"]
+    return a, b
+
+
 GRAPHQL_URL = "https://api.cloudflare.com/client/v4/graphql"
-QUERY = """query($acct: String!, $start: Time!, $end: Time!, $storageStart: Time!) {
+QUERY = """query($acct: String!, $start: Time!, $end: Time!, $storageStart: Time!,
+    $prevStart: Time!, $prevEnd: Time!) {
   viewer { accounts(filter: {accountTag: $acct}) {
     ops: r2OperationsAdaptiveGroups(limit: 100,
         filter: {datetime_geq: $start, datetime_leq: $end}) {
+      sum { requests } dimensions { actionType bucketName }
+    }
+    prev: r2OperationsAdaptiveGroups(limit: 100,
+        filter: {datetime_geq: $prevStart, datetime_leq: $prevEnd}) {
       sum { requests } dimensions { actionType bucketName }
     }
     storage: r2StorageAdaptiveGroups(limit: 100,
@@ -170,7 +242,7 @@ QUERY = """query($acct: String!, $start: Time!, $end: Time!, $storageStart: Time
 }"""
 
 
-def parse_usage(payload: Mapping, as_of: datetime) -> Usage:
+def parse_usage(payload: Mapping, as_of: datetime, bucket: str | None = None) -> Usage:
     """Turn a GraphQL response into month-to-date usage. Raises if the response has errors."""
     if payload.get("errors"):
         raise RuntimeError(f"analytics query failed: {payload['errors']}")
@@ -191,7 +263,16 @@ def parse_usage(payload: Mapping, as_of: datetime) -> Usage:
         bucket = row["dimensions"]["bucketName"]
         if bucket not in latest:
             latest[bucket] = row["max"]["payloadSize"] + row["max"]["metadataSize"]
-    return Usage(class_a=a, class_b=b, storage_bytes=sum(latest.values()), as_of=as_of)
+    previous = (
+        _window_ops(acct["prev"], bucket) if bucket and acct.get("prev") is not None else None
+    )
+    return Usage(
+        class_a=a,
+        class_b=b,
+        storage_bytes=sum(latest.values()),
+        as_of=as_of,
+        previous_window=previous,
+    )
 
 
 def _post_json(url: str, body: dict, headers: dict) -> dict:
@@ -207,17 +288,27 @@ def fetch_usage(
     token: str,
     now: datetime | None = None,
     post_json: Callable[[str, dict, dict], dict] = _post_json,
+    previous: PreviousRun | None = None,
+    bucket: str = "ge-intel-lake",
 ) -> Usage:
+    """Month-to-date usage plus the previous run's window, in one query (one per run)."""
     now = now or datetime.now(UTC)
+    if previous is not None:  # whole minutes either side, the analytics resolution
+        prev_start = previous.started_at.replace(second=0, microsecond=0) - timedelta(minutes=1)
+        prev_end = previous.finished_at.replace(second=0, microsecond=0) + timedelta(minutes=2)
+    else:
+        prev_start = prev_end = now
     variables = {
         "acct": account_id,
         "start": month_start(now).isoformat(),
         "end": now.isoformat(),
         "storageStart": (now - timedelta(days=2)).isoformat(),
+        "prevStart": prev_start.isoformat(),
+        "prevEnd": prev_end.isoformat(),
     }
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     payload = post_json(GRAPHQL_URL, {"query": QUERY, "variables": variables}, headers)
-    return parse_usage(payload, as_of=now)
+    return parse_usage(payload, as_of=now, bucket=bucket if previous is not None else None)
 
 
 def main(argv: Iterable[str] | None = None) -> int:

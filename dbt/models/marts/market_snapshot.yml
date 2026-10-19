@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: market_snapshot
+    description: >
+      One hour's market snapshot under one execution policy (casual-v1 in M1): reference
+      prices from the trailing hour, net margin after the GE tax, the feasible quantity and
+      what limits it, and the Data grade with its inputs and a one-line reason. Written to
+      gold/market_snapshot by delta-rs; rows with is_idea become the published screener.
+    columns:
+      - name: item_id
+        tests: [not_null, unique]
+      - name: snapshot_at
+        tests: [not_null]
+      - name: policy_id
+        tests: [not_null]
+      - name: buy_price
+        description: Trailing instant-sell VWAP rounded up to whole coins (our buy offer).
+      - name: sell_price
+        description: Trailing instant-buy VWAP rounded down to whole coins (our sell target).
+      - name: tax_per_item
+        description: ge_intel.tax via the dbt plugin; 0 for items exempt in the offer's era.
+      - name: net_margin
+        description: sell_price minus tax_per_item minus buy_price, per item.
+      - name: feasible_quantity
+        description: min(buy limit, capital / buy price, queue share of entry-window instant-sell volume).
+      - name: quantity_limited_by
+        tests:
+          - accepted_values:
+              arguments:
+                values: [volume, buy_limit, capital]
+      - name: data_grade
+        tests:
+          - not_null
+          - accepted_values:
+              arguments:
+                values: [A, B, C]
+      - name: data_grade_reason
+        tests: [not_null]

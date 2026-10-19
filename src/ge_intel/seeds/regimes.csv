@@ -1,0 +1,7 @@
+regime_id,kind,starts_at,ends_at,scope,description,source_url
+measurement-runelite,measurement,2021-03-08T00:00:00Z,2026-09-30T00:00:00Z,global,"Wiki real-time prices sampled from RuneLite users only",https://oldschool.runescape.wiki/w/RuneScape:Real-time_Prices
+measurement-jagex,measurement,2026-09-30T00:00:00Z,,global,"Wiki real-time prices from Jagex data across all game clients",https://oldschool.runescape.wiki/w/RuneScape:Real-time_Prices
+tax-none,tax,2001-01-01T00:00:00Z,2021-12-09T00:00:00Z,global,"No Grand Exchange tax",https://oldschool.runescape.wiki/w/Update:Grand_Exchange_Tax_%26_Item_Sink
+tax-1pct,tax,2021-12-09T00:00:00Z,2025-05-29T00:00:00Z,global,"1% tax per item, rounded down, capped at 5M GP; 2021 exemption list",https://oldschool.runescape.wiki/w/Update:Grand_Exchange_Tax_%26_Item_Sink
+tax-2pct,tax,2025-05-29T00:00:00Z,,global,"2% tax for new offers, same rounding and cap; 2025 exemption additions",https://oldschool.runescape.wiki/w/Update:Yama_CAs_%26_More!
+ge-beyond-max-cash,ge_mechanics,2026-09-30T00:00:00Z,,global,"Trades above max cash; guide prices every 3 hours, up to 20% per update",https://oldschool.runescape.wiki/w/Update:GE_Improvements:_Beyond_Max_Cash

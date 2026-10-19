@@ -1,0 +1,111 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kohstack.tech/ge/data/v1/schema/snapshot.schema.json",
+  "title": "GE market intelligence: hourly screener snapshot (v1)",
+  "description": "Top trade ideas for one closed hour under one execution policy. Prices and amounts are whole GP. Times are UTC, ISO 8601 with a Z suffix.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "contract_version", "generated_at", "data_as_of", "policy", "tax", "data_grade", "regime_id", "counts", "ideas", "attribution", "licence"],
+  "$defs": {
+    "utc": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"},
+    "gp": {"type": "integer"},
+    "count": {"type": "integer", "minimum": 0},
+    "grade": {"enum": ["A", "B", "C"]}
+  },
+  "properties": {
+    "contract": {"const": "ge-intel/v1/snapshot"},
+    "contract_version": {"type": "string", "pattern": "^1\\.\\d+\\.\\d+$"},
+    "generated_at": {"$ref": "#/$defs/utc"},
+    "data_as_of": {"$ref": "#/$defs/utc", "description": "End of the newest closed hour the snapshot uses (exclusive)."},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "price_window_hours", "entry_window_hours", "exit_horizon_hours", "queue_share", "capital_gp"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^[a-z]+-v\\d+$"},
+        "price_window_hours": {"type": "integer", "minimum": 1},
+        "entry_window_hours": {"type": "integer", "minimum": 1},
+        "exit_horizon_hours": {"type": "integer", "minimum": 1},
+        "queue_share": {"type": "number", "exclusiveMinimum": 0, "maximum": 1},
+        "capital_gp": {"$ref": "#/$defs/count"}
+      }
+    },
+    "tax": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["rate_percent", "cap_gp_per_item", "exempt_item_count", "rule"],
+      "properties": {
+        "rate_percent": {"type": "number", "minimum": 0},
+        "cap_gp_per_item": {"$ref": "#/$defs/count"},
+        "exempt_item_count": {"$ref": "#/$defs/count"},
+        "rule": {"type": "string"}
+      }
+    },
+    "data_grade": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["version", "thresholds"],
+      "properties": {
+        "version": {"type": "string"},
+        "thresholds": {"type": "object", "additionalProperties": {"type": "integer"}}
+      }
+    },
+    "regime_id": {"type": "string"},
+    "counts": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["items_priced", "ideas", "ideas_published", "grade_a", "grade_b", "grade_c", "withheld_grade_c_with_margin"],
+      "properties": {
+        "items_priced": {"$ref": "#/$defs/count"},
+        "ideas": {"$ref": "#/$defs/count"},
+        "ideas_published": {"$ref": "#/$defs/count"},
+        "grade_a": {"$ref": "#/$defs/count"},
+        "grade_b": {"$ref": "#/$defs/count"},
+        "grade_c": {"$ref": "#/$defs/count"},
+        "withheld_grade_c_with_margin": {"$ref": "#/$defs/count"}
+      }
+    },
+    "ideas": {
+      "type": "array",
+      "maxItems": 100,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["rank", "item_id", "name", "members", "buy_price", "sell_price", "tax_per_item", "tax_exempt", "net_margin", "feasible_quantity", "quantity_limited_by", "buy_limit", "net_gp", "data_grade", "data_grade_reason", "two_sided_hours_24h", "instant_buy_volume_1h", "instant_sell_volume_1h", "instant_sell_volume_entry", "minutes_since_trade", "last_instant_buy_at", "last_instant_sell_at", "price_window_start", "price_window_end"],
+        "properties": {
+          "rank": {"type": "integer", "minimum": 1},
+          "item_id": {"type": "integer", "minimum": 0},
+          "name": {"type": "string"},
+          "members": {"type": ["boolean", "null"]},
+          "buy_price": {"$ref": "#/$defs/gp"},
+          "sell_price": {"$ref": "#/$defs/gp"},
+          "tax_per_item": {"type": "integer", "minimum": 0, "maximum": 5000000},
+          "tax_exempt": {"type": "boolean"},
+          "net_margin": {"type": "integer", "minimum": 1},
+          "feasible_quantity": {"type": "integer", "minimum": 1},
+          "quantity_limited_by": {"enum": ["volume", "buy_limit", "capital"]},
+          "buy_limit": {"type": ["integer", "null"], "minimum": 0},
+          "net_gp": {"type": "integer", "minimum": 1},
+          "data_grade": {"enum": ["A", "B"]},
+          "data_grade_reason": {"type": "string"},
+          "two_sided_hours_24h": {"type": "integer", "minimum": 0, "maximum": 24},
+          "instant_buy_volume_1h": {"$ref": "#/$defs/count"},
+          "instant_sell_volume_1h": {"$ref": "#/$defs/count"},
+          "instant_sell_volume_entry": {"$ref": "#/$defs/count"},
+          "minutes_since_trade": {"type": ["integer", "null"]},
+          "last_instant_buy_at": {"oneOf": [{"$ref": "#/$defs/utc"}, {"type": "null"}]},
+          "last_instant_sell_at": {"oneOf": [{"$ref": "#/$defs/utc"}, {"type": "null"}]},
+          "price_window_start": {"$ref": "#/$defs/utc"},
+          "price_window_end": {"$ref": "#/$defs/utc"}
+        }
+      }
+    },
+    "attribution": {"type": "string"},
+    "licence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "url"],
+      "properties": {"name": {"const": "CC BY-NC-SA 3.0"}, "url": {"type": "string", "format": "uri"}}
+    }
+  }
+}
