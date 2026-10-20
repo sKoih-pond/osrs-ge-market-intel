@@ -3,6 +3,8 @@
 - **Status:** Accepted
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester ("ensure it stays within the free limit; an alert after billing is no use")
+
+> **Implemented in M1 (ADR-0016, 2026-10-20):** bronze writes use the project's own SigV4 client so every `PutObject` is charged to `RunBudget` first, and are conditional (`If-None-Match`), so no `HEAD` is needed. The guard reads month-to-date usage and the previous run's window in one query; an over-budget run blocks the next until `GE_GUARD_ACK_RUN_ID` names it. Measured bootstrap of 288 buckets plus every task, as seven processes: 501 Class A and 854 Class B operations, 12.6 MB stored.
 - **Amends:** ADR-0002, ADR-0003, ADR-0005, ADR-0011, ADR-0012 (each carries a note)
 
 > **Measured in spike S1 (2026-10-20):** a batched hourly write costs about 10 Class A and 15 to 50 Class B operations per table (12 separate commits cost about 7 times more); about 8 tables per run projects to roughly 65,000 Class A (6.5%) and 300,000 Class B (3%) a month, so the per-run caps of 500 / 5,000 hold with 5 to 10 times headroom. Per-minute analytics are complete only about 5 minutes after the fact, so the post-run check reads the previous run's window at the start of the next run. The storage analytics lag further, so the per-run bytes cap is the effective storage control between snapshots. Details: `docs/spikes/S1_results.md`.

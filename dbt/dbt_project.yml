@@ -1,0 +1,42 @@
+name: ge_intel
+version: "1.0.0"
+config-version: 2
+profile: ge_intel
+
+model-paths: ["models"]
+test-paths: ["tests"]
+# One seed file serves Python and SQL (src/ge_intel/seeds/README.md).
+seed-paths: ["../src/ge_intel/seeds"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+flags:
+  send_anonymous_usage_stats: false
+
+# Set per run by ge_intel.build from the task interval and the versioned policy and grading
+# definitions in Python; these defaults only let `dbt parse` and `dbt docs` run.
+vars:
+  lake_root: "../data/lake"
+  snapshot_at: "2026-10-19 22:00:00+00:00"
+  window_start: "2026-10-18 22:00:00+00:00"
+  first_date: "2026-10-18"
+  last_date: "2026-10-19"
+  policy: {}
+  grade: {}
+
+seeds:
+  ge_intel:
+    +column_types:
+      exempt_from: date
+      exempt_to: date
+    regimes:
+      +column_types:
+        starts_at: timestamptz
+        ends_at: timestamptz
+
+models:
+  ge_intel:
+    staging:
+      +materialized: view
+    marts:
+      +materialized: table

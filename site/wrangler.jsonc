@@ -1,0 +1,19 @@
+{
+  // Assets-only Worker: no script runs per request, so requests are free and unlimited
+  // (ADR-0012, spike S2 production configuration). Data ships inside the assets (ADR-0015).
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ge-dashboard",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page"
+  },
+  "routes": [
+    { "pattern": "kohstack.tech/ge", "zone_name": "kohstack.tech" },
+    { "pattern": "kohstack.tech/ge/*", "zone_name": "kohstack.tech" },
+    { "pattern": "www.kohstack.tech/ge", "zone_name": "kohstack.tech" },
+    { "pattern": "www.kohstack.tech/ge/*", "zone_name": "kohstack.tech" }
+  ],
+  "workers_dev": false,
+  "preview_urls": false
+}

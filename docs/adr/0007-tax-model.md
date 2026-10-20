@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Agreed in the kickoff walkthrough; rules taken from Jagex's update notes
 
+> **Exemption seed built in M1 (2026-10-20):** `src/ge_intel/seeds/tax_exemptions.csv`, 48 items: the 9 Dec 2021 list (13 tools and bonds) and the 29 May 2025 additions (taken from the Wiki's current list, since Jagex's post names only categories). Energy potion is assumed exempt at all four doses. Built by `scripts/build_tax_exemptions.py`; the mart applies the rule through a SQL macro generated from `ge_intel.tax` (ADR-0016).
+
 ## Context
 
 Every profit figure, label and backtest depends on the tax. The rules changed twice and the exemption list changed with them.

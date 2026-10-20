@@ -8,6 +8,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 9)
 
+> **Implemented in M1 (ADR-0016, 2026-10-20):** `site/wrangler.jsonc` is the S2 production config; the M1 page is plain HTML, CSS and JavaScript (Vite arrives in M6). Deploys run only when the repository variable `GE_DEPLOY_ENABLED` is `true`, and a publish counts as `success` only once deployed. Preview links (`workers.dev`) remain an open decision for Sylvester.
+
 ## Context
 
 The portfolio at kohstack.tech is a React and Vite site on VentraIP behind Cloudflare. It morphs same-tab into `/sgn/` with cross-document View Transitions, which browsers allow only between pages on the same site. The zone caches the whole site at the edge for 30 days and the portfolio deploy clears that cache; `/sgn/*.json` bypasses it. The GE dashboard is a static site whose data changes hourly.

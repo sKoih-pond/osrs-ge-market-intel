@@ -1,0 +1,29 @@
+# Credentials come from the environment and are never written here (ADR-0014).
+ge_intel:
+  target: local
+  outputs:
+    local:
+      type: duckdb
+      path: "{{ env_var('GE_DBT_DUCKDB_PATH', 'target/ge_intel.duckdb') }}"
+      threads: 1
+      extensions: [delta]
+      settings:
+        TimeZone: UTC
+      plugins:
+        - module: ge_intel.dbt_plugin
+    r2:
+      type: duckdb
+      path: "{{ env_var('GE_DBT_DUCKDB_PATH', 'target/ge_intel.duckdb') }}"
+      threads: 1
+      extensions: [httpfs, delta]
+      settings:
+        TimeZone: UTC
+      plugins:
+        - module: ge_intel.dbt_plugin
+      secrets:
+        - type: s3
+          key_id: "{{ env_var('R2_ACCESS_KEY_ID', '') }}"
+          secret: "{{ env_var('R2_SECRET_ACCESS_KEY', '') }}"
+          region: auto
+          endpoint: "{{ env_var('CLOUDFLARE_ACCOUNT_ID', 'unset') }}.r2.cloudflarestorage.com"
+          url_style: path

@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kohstack.tech/ge/data/v1/schema/status.schema.json",
+  "title": "GE market intelligence: pipeline status (v1)",
+  "description": "Freshness and completeness of the published data. A page treats the data as stale once now minus data_as_of exceeds stale_after_minutes.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["contract", "contract_version", "generated_at", "data_as_of", "stale_after_minutes", "objective", "last_successful_run", "freshness_30d", "completeness_30d", "days", "attribution"],
+  "$defs": {
+    "utc": {"type": "string", "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$"},
+    "count": {"type": "integer", "minimum": 0},
+    "share": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+    "run": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["run_id", "status", "interval_end", "finished_at"],
+      "properties": {
+        "run_id": {"type": "string"},
+        "status": {"type": "string"},
+        "interval_end": {"$ref": "#/$defs/utc"},
+        "finished_at": {"$ref": "#/$defs/utc"}
+      }
+    }
+  },
+  "properties": {
+    "contract": {"const": "ge-intel/v1/status"},
+    "contract_version": {"type": "string", "pattern": "^1\\.\\d+\\.\\d+$"},
+    "generated_at": {"$ref": "#/$defs/utc"},
+    "data_as_of": {"$ref": "#/$defs/utc"},
+    "stale_after_minutes": {"type": "integer", "minimum": 1},
+    "objective": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["on_time_minutes", "on_time_share_target"],
+      "properties": {"on_time_minutes": {"type": "integer"}, "on_time_share_target": {"type": "number"}}
+    },
+    "last_successful_run": {"$ref": "#/$defs/run"},
+    "freshness_30d": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["hours_expected", "hours_on_time", "hours_published", "share_on_time"],
+      "properties": {
+        "hours_expected": {"$ref": "#/$defs/count"},
+        "hours_on_time": {"$ref": "#/$defs/count"},
+        "hours_published": {"$ref": "#/$defs/count"},
+        "share_on_time": {"$ref": "#/$defs/share"}
+      }
+    },
+    "completeness_30d": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["buckets_expected", "buckets_present", "outage_buckets", "share_present"],
+      "properties": {
+        "buckets_expected": {"$ref": "#/$defs/count"},
+        "buckets_present": {"$ref": "#/$defs/count"},
+        "outage_buckets": {"$ref": "#/$defs/count"},
+        "share_present": {"$ref": "#/$defs/share"}
+      }
+    },
+    "days": {
+      "type": "array",
+      "maxItems": 31,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["date", "buckets_expected", "buckets_present", "outage_buckets", "share_present", "hours_expected", "hours_on_time", "hours_published", "share_on_time"],
+        "properties": {
+          "date": {"type": "string", "format": "date"},
+          "buckets_expected": {"$ref": "#/$defs/count"},
+          "buckets_present": {"$ref": "#/$defs/count"},
+          "outage_buckets": {"$ref": "#/$defs/count"},
+          "share_present": {"$ref": "#/$defs/share"},
+          "hours_expected": {"$ref": "#/$defs/count"},
+          "hours_on_time": {"$ref": "#/$defs/count"},
+          "hours_published": {"$ref": "#/$defs/count"},
+          "share_on_time": {"$ref": "#/$defs/share"}
+        }
+      }
+    },
+    "attribution": {"type": "string"}
+  }
+}

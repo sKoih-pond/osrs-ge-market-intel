@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -126,3 +126,62 @@ def test_cli_fails_closed_without_credentials(monkeypatch):
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     monkeypatch.delenv("CLOUDFLARE_ANALYTICS_TOKEN", raising=False)
     assert cg.main() == 2
+
+
+PREV = cg.PreviousRun(
+    "gha-1-1", datetime(2026, 10, 16, 0, 5, tzinfo=UTC), datetime(2026, 10, 16, 0, 9, tzinfo=UTC)
+)
+LATER = datetime(2026, 10, 16, 1, 5, tzinfo=UTC)
+
+
+def _with_prev(prev_ops):
+    payload = _payload([], [])
+    payload["data"]["viewer"]["accounts"][0]["prev"] = prev_ops
+    return payload
+
+
+def _ops(bucket, action, n):
+    return {"sum": {"requests": n}, "dimensions": {"actionType": action, "bucketName": bucket}}
+
+
+def test_previous_window_counts_only_the_project_bucket():
+    payload = _with_prev(
+        [
+            _ops("ge-intel-lake", "PutObject", 90),
+            _ops("ge-intel-lake", "GetObject", 400),
+            _ops("other", "PutObject", 10_000),
+        ]
+    )
+    u = cg.parse_usage(payload, as_of=LATER, bucket="ge-intel-lake")
+    assert u.previous_window == (90, 400)
+
+
+def test_previous_run_over_its_caps_blocks_until_acknowledged():
+    usage = cg.Usage(0, 0, 0, LATER, previous_window=(501, 100))
+    verdict = cg.check_previous_run(usage, PREV)
+    assert not verdict.allowed and "GE_GUARD_ACK_RUN_ID=gha-1-1" in verdict.reasons[0]
+    assert cg.check_previous_run(usage, PREV, acknowledged_run_id="gha-1-1").allowed
+    assert not cg.check_previous_run(usage, PREV, acknowledged_run_id="gha-9-1").allowed
+
+
+def test_previous_run_within_caps_is_allowed():
+    usage = cg.Usage(0, 0, 0, LATER, previous_window=(120, 900))
+    assert cg.check_previous_run(usage, PREV) == cg.Verdict(True, (), ())
+
+
+def test_previous_run_that_just_ended_warns_that_counts_may_be_low():
+    usage = cg.Usage(0, 0, 0, PREV.finished_at + timedelta(minutes=2), previous_window=(10, 10))
+    verdict = cg.check_previous_run(usage, PREV)
+    assert verdict.allowed and verdict.warnings
+
+
+def test_one_query_carries_the_previous_window():
+    seen = {}
+
+    def fake_post(url, body, headers):
+        seen.update(body["variables"])
+        return _with_prev([])
+
+    cg.fetch_usage("acct", "tok", now=LATER, post_json=fake_post, previous=PREV)
+    assert seen["prevStart"] == "2026-10-16T00:04:00+00:00"
+    assert seen["prevEnd"] == "2026-10-16T00:11:00+00:00"

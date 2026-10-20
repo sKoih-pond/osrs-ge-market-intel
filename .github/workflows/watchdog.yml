@@ -1,0 +1,34 @@
+name: watchdog
+
+# Independent of the pipeline (ADR-0001): reads only the public status.json and the GitHub
+# API, needs no project secrets, and installs nothing.
+on:
+  schedule:
+    - cron: "11,41 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+  actions: read
+
+concurrency:
+  group: watchdog
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: src/ge_intel/watchdog.py
+          sparse-checkout-cone-mode: false
+      - run: python3 src/ge_intel/watchdog.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          STATUS_URL: https://kohstack.tech/ge/data/v1/status.json
+          EXPECT_LIVE: ${{ vars.GE_DEPLOY_ENABLED }}

@@ -1,0 +1,64 @@
+name: hourly
+
+# The Phase B clock (ADR-0001): every task for the newest closed hour, with catch-up from
+# storage. A second slot each hour gives a dropped schedule a second chance; when the first
+# run succeeded, the second finds every task complete and writes nothing.
+on:
+  schedule:
+    - cron: "7 * * * *"
+    - cron: "27 * * * *"
+  workflow_dispatch:
+    inputs:
+      end:
+        description: "Hour end, UTC ISO 8601 (default: the newest closed hour)"
+        required: false
+      force:
+        description: "Re-run tasks already recorded as complete"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# One writer per table (ADR-0003): runs queue, they never overlap or cancel each other.
+concurrency:
+  group: ge-intel-lake-writer
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.duckdb/extensions
+          key: duckdb-ext-${{ runner.os }}-${{ hashFiles('uv.lock') }}
+      - run: uv sync --locked
+      - if: vars.GE_DEPLOY_ENABLED == 'true'
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - if: vars.GE_DEPLOY_ENABLED == 'true'
+        run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
+      # Cost guard first (fails closed), then every task; secrets reach this step only.
+      - name: ge-intel hourly
+        timeout-minutes: 12
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ vars.GE_DEPLOY_ENABLED == 'true' && secrets.CLOUDFLARE_API_TOKEN || '' }}
+          GE_DEPLOY: ${{ vars.GE_DEPLOY_ENABLED == 'true' && '1' || '0' }}
+          GE_GUARD_ACK_RUN_ID: ${{ vars.GE_GUARD_ACK_RUN_ID }}
+          END: ${{ inputs.end }}
+          FORCE: ${{ inputs.force && '--force' || '' }}
+        run: uv run ge-intel hourly ${END:+--end "$END"} $FORCE

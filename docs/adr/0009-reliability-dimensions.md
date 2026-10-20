@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Agreed in the kickoff walkthrough (brief section 3C)
 
+> **Data grade v1 set in M1 (ADR-0016, 2026-10-20):** thresholds derived from measured next-hour price drift and two-sided trading on 680,069 post-switch item-hours; volume was tested and not used. Definitions and tables: `docs/methodology/data_grade.md`.
+
 ## Context
 
 The brief makes reliability the defining feature and warns against arbitrary percentages. A single blended score would hide which part is weak: stale data, an order too large to fill, or a model that has not earned trust. The principle carried over from earlier work is to show the deviation and let the user decide.
