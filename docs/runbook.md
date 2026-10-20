@@ -9,6 +9,7 @@ How the hourly pipeline runs, what can go wrong, and what to do. Decisions behin
 | `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance (weekly, Monday 00:xx UTC) |
 | `watchdog` | `:13` and `:43` every hour | Reads the public `status.json` and the `hourly` workflow's state; opens one issue labelled `watchdog` when data is over 2 hours old or the schedule is off, and closes it on recovery |
 | `ci` | Every pull request and push to `main` | Lint, unit, contract and end-to-end tests, Wrangler dry run |
+| `deploy-clock` | By hand | Deploys `ge-clock` (ADR-0017), the Cloudflare Worker whose Cron Triggers dispatch `hourly` (`:06`, `:26`) and `watchdog` (`:13`, `:43`) |
 
 Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ANALYTICS_TOKEN`; variables `CLOUDFLARE_ACCOUNT_ID`, `GE_DEPLOY_ENABLED` (`true` to deploy to `kohstack.tech/ge/`), `GE_GUARD_ACK_RUN_ID` (see below).
 
@@ -43,7 +44,16 @@ Seen on 20 October 2026: after `hourly.yml` and `watchdog.yml` first landed on `
 
 1. Keep the data fresh by hand meanwhile: Actions tab, `hourly`, Run workflow (each run catches up every missed bucket).
 2. Make GitHub register the schedule again by changing the `cron:` line itself (a different minute is enough) in a pull request and merging it. Changes elsewhere in the repository do not re-register it.
-3. If scheduled runs still do not start, the fallback is an external clock: a Cloudflare Worker cron trigger that calls the `workflow_dispatch` API. That is an account change and needs a fine-grained GitHub token, so it waits for Sylvester.
+3. That did not help on 20 October, so the clock is now `ge-clock` (ADR-0017); the GitHub schedules stay as a second clock.
+
+## ge-clock: setting up and rotating its token
+
+1. Sylvester creates a fine-grained personal access token on GitHub (Settings, Developer settings, Fine-grained tokens): resource owner `sKoih-pond`, repository access **only** `osrs-ge-market-intel`, repository permission **Actions: Read and write** (Metadata read-only comes with it), nothing else. Pick an expiry and put the date in the calendar.
+2. Store it as the repository secret `GH_DISPATCH_TOKEN` (repository Settings, Secrets and variables, Actions). Never paste it anywhere else.
+3. Run the `deploy-clock` workflow (Actions tab). It deploys `ge-clock` and pipes the secret into the Worker, so the value never appears in a log.
+4. Check: within 20 minutes an `hourly` run with event `workflow_dispatch` appears at `:06` or `:26`. In the Cloudflare dashboard, Workers & Pages, `ge-clock`, Logs, each tick logs `dispatched`.
+
+To rotate: create the new token, replace the repository secret, re-run `deploy-clock`, then delete the old token. If the token expires, both workflows stop and no watchdog issue opens; the page's staleness warning is the signal (ADR-0017).
 
 ## Pausing the pipeline
 

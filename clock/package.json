@@ -1,0 +1,6 @@
+{
+  "name": "ge-clock",
+  "private": true,
+  "type": "module",
+  "license": "MIT"
+}
