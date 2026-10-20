@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 1)
 
+> **Amended by ADR-0017 (2026-10-20):** GitHub never fired this repository's `schedule` events, so the hourly clock is a Cloudflare Cron Trigger (`ge-clock`) that dispatches the workflows. Actions still provides the compute; the GitHub schedules stay as a second clock.
+
 ## Context
 
 The pipeline must run unattended every hour at $0. The developer laptop (8 GB Intel MacBook) sleeps and cannot host a service. A persistent orchestrator also needs a persistent host. The source publishes closed 5-minute buckets that can be requested by timestamp at any later time, so a late or skipped run loses no data provided the next run catches up.

@@ -6,7 +6,7 @@ Status values: **Accepted**, **Accepted, pending spike** (holds unless the named
 
 | ADR | Title | Status |
 |---|---|---|
-| [0001](0001-runtime-actions-now-vm-after-v1.md) | Runtime: GitHub Actions now, always-on VM after v1 | Accepted |
+| [0001](0001-runtime-actions-now-vm-after-v1.md) | Runtime: GitHub Actions now, always-on VM after v1 | Accepted, amended by 0017 (clock) |
 | [0002](0002-storage-cloudflare-r2.md) | Storage: Cloudflare R2, private lake and public bucket | Accepted, amended by 0015 |
 | [0003](0003-table-format-delta-lake.md) | Table format: Delta Lake | Accepted (S1 passed); amended by 0015 |
 | [0004](0004-orchestration-airflow-at-phase-c.md) | Orchestration: Airflow-ready tasks now, Airflow 3 at Phase C | Accepted, amended by 0016 |
@@ -22,6 +22,7 @@ Status values: **Accepted**, **Accepted, pending spike** (holds unless the named
 | [0014](0014-repository-ci-secrets.md) | Repository, CI, secrets and code licence (MIT) | Accepted, amended by 0016 |
 | [0015](0015-r2-free-tier-by-construction.md) | R2 stays inside the free tier by construction | Accepted, amended by 0016 |
 | [0016](0016-m1-live-screener-implementation.md) | M1 live screener: implementation decisions | Accepted |
+| [0017](0017-clock-cloudflare-cron-dispatch.md) | The hourly clock is a Cloudflare Cron Trigger, not GitHub's scheduler | Accepted, deployment pending token |
 
 Source of the decisions: `docs/decisions/2026-10-20_kickoff_decisions.md`. Evidence: `docs/research/2026-10-20_discovery_report.md`.
 

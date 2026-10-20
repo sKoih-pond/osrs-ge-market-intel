@@ -64,7 +64,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 
 - **Preview links** need a `workers.dev` subdomain, an account setting. Not created; Sylvester decides.
 - **`www` for `/ge/`** is served, not redirected, matching the portfolio.
-- **Scheduled workflows stop after 60 days without repository activity**, the watchdog included. GitHub emails the owner first; the runbook covers re-enabling.
+- **GitHub's scheduler never fired here**; the clock moved to a Cloudflare Cron Trigger (ADR-0017). The 60-day inactivity rule then matters only for the GitHub schedules kept as a second clock.
 
 ## Alternatives considered
 

@@ -46,3 +46,9 @@ jobs:
         run: |
           cp -R src dist
           npx --no-install wrangler deploy --dry-run --config wrangler.jsonc
+      # ge-clock: unit tests and Wrangler's checks of its config (ADR-0017).
+      - run: node --test clock/test/index.test.mjs
+      - name: wrangler deploy --dry-run (ge-clock)
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --prefix site --no-install wrangler deploy --dry-run --config clock/wrangler.jsonc

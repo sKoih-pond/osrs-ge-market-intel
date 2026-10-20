@@ -38,6 +38,7 @@ Wiki API v2 ──> ingest (/5m gap-fill, /latest, /mapping) ──> R2: bronze 
 | `dbt/` | dbt-duckdb project: staging views over the Delta tables and the `market_snapshot` mart |
 | `contracts/v1/` | JSON Schemas for the published files |
 | `site/` | The page (`src/`) and the assets-only Worker config |
+| `clock/` | `ge-clock`, the Cloudflare Worker whose Cron Triggers start the hourly run (ADR-0017) |
 | `scripts/` | Fetching raw responses, building fixtures, the exemption seed and the grade derivation |
 | `tests/` | Unit, contract (recorded payloads) and end-to-end tests |
 

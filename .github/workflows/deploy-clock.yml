@@ -1,0 +1,40 @@
+name: deploy-clock
+
+# Deploys ge-clock (ADR-0017), the Cloudflare Worker whose cron triggers dispatch the hourly
+# and watchdog workflows. Run by hand after changing clock/ or rotating GH_DISPATCH_TOKEN.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-clock
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
+      - run: node --test clock/test/index.test.mjs
+      - name: Deploy ge-clock and store its token
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          GH_DISPATCH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          if [ -z "$GH_DISPATCH_TOKEN" ]; then
+            echo "Add the repository secret GH_DISPATCH_TOKEN first (docs/runbook.md)." >&2
+            exit 1
+          fi
+          npx --prefix site --no-install wrangler deploy --config clock/wrangler.jsonc
+          printf '%s' "$GH_DISPATCH_TOKEN" | npx --prefix site --no-install wrangler secret put GITHUB_DISPATCH_TOKEN --config clock/wrangler.jsonc
