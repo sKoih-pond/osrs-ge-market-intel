@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 11; code licence chosen 2026-10-20)
 
+> **Done in M1 (2026-10-20):** `uv.lock` introduced; Wrangler pinned through `site/package-lock.json`; every action pinned to a commit SHA, secrets passed only to the step that needs them; CI adds a Wrangler dry run. The recorded test fixtures in `tests/fixtures/wiki/` are CC BY-NC-SA 3.0 with their own notice.
+
 ## Context
 
 Hourly Actions runs need unlimited minutes, which GitHub provides only for public repositories (a private repo on the free plan gets 2,000 minutes a month; hourly runs alone need about 2,200 to 3,600). Reviewers should see the project's history. The pipeline handles R2 and Cloudflare credentials.

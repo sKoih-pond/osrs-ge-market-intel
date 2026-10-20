@@ -53,6 +53,6 @@ DATA_GRADE_V1 = DataGrade(
     a_min_two_sided_hours=24,
     a_max_minutes_since_trade=10,
     c_below_two_sided_hours=16,
-    c_above_minutes_since_trade=45,
+    c_above_minutes_since_trade=30,
     min_window_buckets=259,  # 90% of 288; an operating rule, not a derived threshold
 )

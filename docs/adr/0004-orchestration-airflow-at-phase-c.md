@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 3)
 
+> **Implemented in M1 (ADR-0016, 2026-10-20):** `ge_intel.tasks.REGISTRY` is the single task list; `ge-intel run <task> --start --end` is the interface and `ge-intel hourly` the Phase B scheduler shim. Completion is recorded in `ops/task_runs` (one commit per process) and, for `/5m`, in the bucket manifest. Two schedule slots an hour; dbt runs in its own process.
+
 ## Context
 
 The work is interval-shaped: hourly ingestion, daily item snapshots, weekly maintenance, about 49k hourly intervals of history to backfill, dbt models, and Spark jobs (ADR-0011), with dependencies between them. It needs interval-based scheduling, backfills, retries, dependency ordering, concurrency limits per table, run history and failure alerts.

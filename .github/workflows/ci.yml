@@ -34,3 +34,15 @@ jobs:
       - run: uv run ruff format --check .
       # Unit, contract (recorded payloads) and end-to-end (every task, dbt included) tests.
       - run: uv run pytest
+      # The Worker config and assets must pass Wrangler's own checks before any deploy.
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: "22"
+      - run: npm ci --prefix site --ignore-scripts --no-audit --no-fund
+      - name: wrangler deploy --dry-run
+        working-directory: site
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: |
+          cp -R src dist
+          npx --no-install wrangler deploy --dry-run --config wrangler.jsonc

@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decisions 4 and 5)
 
+> **Implemented in M1 (ADR-0016, 2026-10-20):** gap-fill runs newest first, at most 96 buckets per run; facts commit before the manifest so a crash cannot duplicate rows; outage = under 0.6 of the trailing 24-hour median item count, with 15 minutes' grace for unpublished buckets (`docs/methodology/outage_rule.md`); bronze keys add a content hash; `/latest` and `/mapping` refuse intervals they cannot reproduce.
+
 > **Amended by ADR-0015 (2026-10-20):** backfill raw responses are stored on local disk with their SHA-256, not uploaded to R2; only the typed tables built from them are. Live raw responses go to `bronze/` in R2 and expire after 30 days.
 
 > **Amended 2026-10-20 (Sylvester):** the historical backfill comes from the Kaggle dump `antonygarand/osrs-ge-5m` (version 1, CC BY-NC-SA 3.0), not from about 81,000 Wiki requests. Rules: pin version 1 with per-file SHA-256; convert `timestamp` × 300 (it is a bucket number); tag provenance per row; check 2 random hours per month against the Wiki `/1h` endpoint and quarantine any month that disagrees; fill missing buckets from the API with the gap-finder; keep the 4.8 GB archive on local disk and put derived hourly history plus recent 5-minute data in R2. Wiki requests for history drop to a few hundred to low thousands. Evidence: `docs/research/2026-10-20_kaggle_osrs_ge_5m_assessment.md`.

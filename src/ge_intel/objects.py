@@ -68,7 +68,8 @@ def sign_v4(
     header passed is signed.
     """
     parts = urllib.parse.urlsplit(url)
-    canonical_uri = urllib.parse.quote(parts.path or "/", safe="/~")
+    # Encode exactly once, whether or not the caller already percent-encoded the path.
+    canonical_uri = urllib.parse.quote(urllib.parse.unquote(parts.path) or "/", safe="/~")
     query = urllib.parse.parse_qsl(parts.query, keep_blank_values=True)
     canonical_query = "&".join(
         f"{urllib.parse.quote(k, safe='~')}={urllib.parse.quote(v, safe='~')}"
@@ -100,17 +101,17 @@ def sign_v4(
     )
 
 
-# (method, url, headers, body) -> HTTP status
-HttpSend = Callable[[str, str, dict[str, str], bytes], int]
+# (method, url, headers, body) -> (HTTP status, response body)
+HttpSend = Callable[[str, str, dict[str, str], bytes], tuple[int, bytes]]
 
 
-def _urllib_send(method: str, url: str, headers: dict[str, str], body: bytes) -> int:
+def _urllib_send(method: str, url: str, headers: dict[str, str], body: bytes) -> tuple[int, bytes]:
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
-            return resp.status
+            return resp.status, resp.read()
     except urllib.error.HTTPError as exc:
-        return exc.code
+        return exc.code, exc.read()
 
 
 class R2Store:
@@ -151,12 +152,13 @@ class R2Store:
                 "PUT", url, headers, payload_hash, self._kid, self._secret, "auto", now
             )
             self.budget.charge("PutObject", bytes_written=len(body))  # raises before sending
-            status = self.send("PUT", url, headers, body)
+            status, reply = self.send("PUT", url, headers, body)
             if status == 200:
                 return True
             if status == 412:  # precondition failed: the object already exists
                 return False
             if status < 500 or attempt == self.retries:
-                raise RuntimeError(f"PUT {key} failed with HTTP {status}")
+                detail = reply[:300].decode(errors="replace")
+                raise RuntimeError(f"PUT {key} failed with HTTP {status}: {detail}")
             time.sleep(2 ** (attempt + 1))
         raise AssertionError("unreachable")  # pragma: no cover

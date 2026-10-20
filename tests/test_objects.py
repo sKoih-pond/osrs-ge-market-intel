@@ -67,7 +67,7 @@ class FakeR2:
 
     def __call__(self, method, url, headers, body):
         self.calls.append((method, url, headers, body))
-        return self.statuses.pop(0)
+        return self.statuses.pop(0), b""
 
 
 def store(send, budget=None):
@@ -82,6 +82,13 @@ def test_put_is_conditional_and_never_sets_a_storage_class():
     assert url == "https://acct.r2.cloudflarestorage.com/ge-intel-lake/bronze/x%3D1/a.json.gz"
     assert headers["if-none-match"] == "*"
     assert not any("storage-class" in h for h in headers)
+
+
+def test_encoded_and_raw_paths_sign_identically():
+    args = ({"host": "h", "x-amz-date": "20130524T000000Z"}, EMPTY_SHA, KID, SECRET, "auto", WHEN)
+    raw = sign_v4("PUT", "https://h/b/bronze/date=2026-10-19/a.json.gz", *args)
+    encoded = sign_v4("PUT", "https://h/b/bronze/date%3D2026-10-19/a.json.gz", *args)
+    assert raw == encoded
 
 
 def test_existing_object_is_not_rewritten():
