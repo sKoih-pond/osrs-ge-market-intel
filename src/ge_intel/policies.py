@@ -37,8 +37,10 @@ class DataGrade:
     version: str
     a_min_two_sided_hours: int
     a_max_minutes_since_trade: int
+    a_max_price_deviation_pct: int
     c_below_two_sided_hours: int
     c_above_minutes_since_trade: int
+    c_above_price_deviation_pct: int
     min_window_buckets: int  # recorded buckets (traded or outage) of the 288 in 24 hours
 
     def as_vars(self) -> dict:
@@ -47,12 +49,16 @@ class DataGrade:
 
 # Derived on 14 days of post-switch /1h data and 24 hours of /5m data (680,069 and 48,257
 # item-hours): docs/methodology/data_grade.md. Volume was tested and did not separate stable
-# from unstable prices, so v1 has no volume threshold.
-DATA_GRADE_V1 = DataGrade(
-    version="data-grade-v1",
+# from unstable prices, so there is no volume threshold. v2 (20 Oct 2026) adds the price
+# envelope after v1 published a single stray trade (Yellow boots at 85 times its usual price)
+# as the top idea in its first live hour.
+DATA_GRADE_V2 = DataGrade(
+    version="data-grade-v2",
     a_min_two_sided_hours=24,
     a_max_minutes_since_trade=10,
+    a_max_price_deviation_pct=5,
     c_below_two_sided_hours=16,
     c_above_minutes_since_trade=30,
+    c_above_price_deviation_pct=10,
     min_window_buckets=259,  # 90% of 288; an operating rule, not a derived threshold
 )

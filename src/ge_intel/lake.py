@@ -77,8 +77,13 @@ class Lake:
         partition_by: list[str] | None = None,
         metadata: Mapping[str, str] | None = None,
         mode: str = "overwrite",
+        schema_mode: str | None = None,
     ) -> int:
-        """One commit: replace rows matching `predicate` (or the whole table) with `data`."""
+        """One commit: replace rows matching `predicate` (or the whole table) with `data`.
+
+        `schema_mode="merge"` lets a write add nullable columns (protocol unchanged); without
+        it delta-rs refuses data whose columns differ from the table's.
+        """
         dt = self.table(name)
         target = dt if dt is not None else self.uri(name)
         write_deltalake(
@@ -87,6 +92,7 @@ class Lake:
             mode=mode,
             predicate=predicate if dt is not None else None,
             partition_by=partition_by,
+            schema_mode=schema_mode if dt is not None else None,
             storage_options=self.storage_options,
             commit_properties=CommitProperties(custom_metadata=dict(metadata or {})),
         )

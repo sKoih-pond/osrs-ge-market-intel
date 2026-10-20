@@ -34,13 +34,21 @@ hours as (
         item_id,
         date_trunc('hour', bucket_start) as hour_start,
         bool_or(avg_high_price is not null) as buy_side,
-        bool_or(avg_low_price is not null) as sell_side
+        bool_or(avg_low_price is not null) as sell_side,
+        sum(avg_high_price * high_volume) filter (where avg_high_price is not null)
+            / nullif(sum(high_volume) filter (where avg_high_price is not null), 0) as instant_buy_vwap_h,
+        sum(avg_low_price * low_volume) filter (where avg_low_price is not null)
+            / nullif(sum(low_volume) filter (where avg_low_price is not null), 0) as instant_sell_vwap_h
     from prices
     group by 1, 2
 ),
 
-coverage as (
-    select item_id, count(*) filter (where buy_side and sell_side) as two_sided_hours_24h
+coverage as (  -- two-sided hours, and each side's median hourly price as its own envelope
+    select
+        item_id,
+        count(*) filter (where buy_side and sell_side) as two_sided_hours_24h,
+        median(instant_buy_vwap_h) as median_instant_buy_24h,
+        median(instant_sell_vwap_h) as median_instant_sell_24h
     from hours
     group by item_id
 ),
@@ -87,6 +95,11 @@ priced as (
         coalesce(w.instant_sell_volume, 0) as instant_sell_volume_1h,
         coalesce(e.instant_sell_volume_entry, 0) as instant_sell_volume_entry,
         coalesce(c.two_sided_hours_24h, 0) as two_sided_hours_24h,
+        -- How far the price hour sits from the item's own 24-hour median, on the worse side.
+        round(100 * (exp(greatest(
+            abs(ln(w.instant_buy_vwap / c.median_instant_buy_24h)),
+            abs(ln(w.instant_sell_vwap / c.median_instant_sell_24h))
+        )) - 1), 1) as price_deviation_pct,
         -- Whole coins, rounded against us: buy at or above the reference, sell at or below.
         cast(ceil(w.instant_sell_vwap) as bigint) as buy_price,
         cast(floor(w.instant_buy_vwap) as bigint) as sell_price,
@@ -149,7 +162,9 @@ graded as (
             when h.buckets_recorded_price_window < {{ p['price_window_hours'] * 12 }} or h.outage_buckets_price_window > 0 then 'C'
             when f.two_sided_hours_24h < {{ g['c_below_two_sided_hours'] }} then 'C'
             when f.minutes_since_trade is not null and f.minutes_since_trade > {{ g['c_above_minutes_since_trade'] }} then 'C'
+            when f.price_deviation_pct > {{ g['c_above_price_deviation_pct'] }} then 'C'
             when f.two_sided_hours_24h >= {{ g['a_min_two_sided_hours'] }}
+                 and f.price_deviation_pct <= {{ g['a_max_price_deviation_pct'] }}
                  and f.minutes_since_trade is not null
                  and f.minutes_since_trade <= {{ g['a_max_minutes_since_trade'] }} then 'A'
             else 'B'
@@ -186,6 +201,7 @@ select
     quantity_limited_by,
     case when net_margin > 0 and feasible_quantity > 0 then cast(net_margin * feasible_quantity as bigint) end as net_gp,
     cast(two_sided_hours_24h as integer) as two_sided_hours_24h,
+    price_deviation_pct,
     cast(buckets_ok_24h as integer) as buckets_ok_24h,
     cast(outage_buckets_24h as integer) as outage_buckets_24h,
     last_instant_buy_at,
@@ -200,6 +216,8 @@ select
             then 'both sides traded in only ' || two_sided_hours_24h || ' of the last 24 hours'
         when data_grade = 'C' and minutes_since_trade > {{ g['c_above_minutes_since_trade'] }}
             then 'last trade ' || minutes_since_trade || ' minutes before publication'
+        when data_grade = 'C' and price_deviation_pct > {{ g['c_above_price_deviation_pct'] }}
+            then 'price this hour is ' || price_deviation_pct || '% away from its own 24-hour median'
         when data_grade = 'C' then 'price hour incomplete or hit a source outage'
         when data_grade = 'A'
             then 'both sides traded in all 24 of the last 24 hours, last trade '
@@ -207,6 +225,9 @@ select
         when two_sided_hours_24h < {{ g['a_min_two_sided_hours'] }}
             then 'both sides traded in ' || two_sided_hours_24h || ' of the last 24 hours (grade A needs '
                 || {{ g['a_min_two_sided_hours'] }} || ')'
+        when price_deviation_pct > {{ g['a_max_price_deviation_pct'] }}
+            then 'price this hour is ' || price_deviation_pct || '% from its 24-hour median (grade A needs '
+                || {{ g['a_max_price_deviation_pct'] }} || '% or less)'
         when minutes_since_trade is null then 'time of last trade unknown'
         else 'last trade ' || minutes_since_trade || ' min before publication (grade A needs '
             || {{ g['a_max_minutes_since_trade'] }} || ' or fewer)'
