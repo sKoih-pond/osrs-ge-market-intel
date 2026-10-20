@@ -78,6 +78,14 @@ def test_recovery_closes_the_issue():
     ]
 
 
+def test_html_from_the_origin_before_go_live_is_not_a_fault():
+    def html(method, url, body):
+        raise watchdog.json.JSONDecodeError("Expecting value", "<html>", 0)
+
+    assert watchdog.data_problems(html, ENV["STATUS_URL"], False, NOW) == []
+    assert watchdog.data_problems(html, ENV["STATUS_URL"], True, NOW)
+
+
 def test_missing_status_is_a_fault_only_once_live():
     assert watchdog.data_problems(FakeGitHub(status_code=404), ENV["STATUS_URL"], False, NOW) == []
     assert watchdog.data_problems(FakeGitHub(status_code=404), ENV["STATUS_URL"], True, NOW)

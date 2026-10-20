@@ -48,13 +48,15 @@ def make_http(token: str | None) -> Http:
 
 
 def data_problems(http: Http, status_url: str, expect_live: bool, now: datetime) -> list[str]:
+    if not expect_live:
+        # Not deployed yet (GE_DEPLOY_ENABLED is not true): /ge/ may still be answered by the
+        # portfolio origin, so there is no published data to judge.
+        return []
     try:
         code, status = http("GET", status_url, None)
     except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
         return [f"status.json could not be read: {exc}"]
     if code != 200 or not isinstance(status, dict):
-        if not expect_live:
-            return []  # dashboard not deployed yet (GE_DEPLOY_ENABLED is not true)
         return [f"status.json returned HTTP {code} from {status_url}"]
     try:
         as_of = datetime.fromisoformat(status["data_as_of"].replace("Z", "+00:00"))
