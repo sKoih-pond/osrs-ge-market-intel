@@ -50,7 +50,7 @@ Seen on 20 October 2026: after `hourly.yml` and `watchdog.yml` first landed on `
 
 1. Sylvester creates a fine-grained personal access token on GitHub (Settings, Developer settings, Fine-grained tokens): resource owner `sKoih-pond`, repository access **only** `osrs-ge-market-intel`, repository permission **Actions: Read and write** (Metadata read-only comes with it), nothing else. Pick an expiry and put the date in the calendar.
 2. Store it as the repository secret `GH_DISPATCH_TOKEN` (repository Settings, Secrets and variables, Actions). Never paste it anywhere else.
-3. Run the `deploy-clock` workflow (Actions tab). It deploys `ge-clock` and pipes the secret into the Worker, so the value never appears in a log.
+3. Run the `deploy-clock` workflow (Actions tab). It deploys `ge-clock` and pipes the secret into the Worker, so the value never appears in a log. Cron Triggers need the account's `workers.dev` subdomain to exist (`kohstack.workers.dev`, created 20 October); if Cloudflare answers error 10063, it has been deleted. Neither Worker is served on it: both keep `workers_dev` and preview URLs off.
 4. Check: within 20 minutes an `hourly` run with event `workflow_dispatch` appears at `:06` or `:26`. In the Cloudflare dashboard, Workers & Pages, `ge-clock`, Logs, each tick logs `dispatched`.
 
 To rotate: create the new token, replace the repository secret, re-run `deploy-clock`, then delete the old token. If the token expires, both workflows stop and no watchdog issue opens; the page's staleness warning is the signal (ADR-0017).

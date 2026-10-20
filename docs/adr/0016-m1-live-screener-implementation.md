@@ -62,7 +62,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 
 ## Open
 
-- **Preview links** need a `workers.dev` subdomain, an account setting. Not created; Sylvester decides.
+- **Preview links:** the account now has a `workers.dev` subdomain (`kohstack`, created for ADR-0017), but preview URLs stay off; turning them on is still Sylvester's call.
 - **`www` for `/ge/`** is served, not redirected, matching the portfolio.
 - **GitHub's scheduler never fired here**; the clock moved to a Cloudflare Cron Trigger (ADR-0017). The 60-day inactivity rule then matters only for the GitHub schedules kept as a second clock.
 
