@@ -18,7 +18,7 @@ from pathlib import Path
 import duckdb
 
 from ge_intel.ingest import BUCKETS, Context
-from ge_intel.policies import CASUAL_V1, DATA_GRADE_V1
+from ge_intel.policies import CASUAL_V1, DATA_GRADE_V2
 from ge_intel.timegrid import FIVE_MIN, grid, iso, sql_ts
 
 DBT_DIR = Path(__file__).resolve().parents[2] / "dbt"
@@ -39,7 +39,7 @@ def dbt_vars(lake_root: str, end: datetime) -> dict:
         "first_date": start.date().isoformat(),
         "last_date": end.date().isoformat(),
         "policy": CASUAL_V1.as_vars(),
-        "grade": DATA_GRADE_V1.as_vars(),
+        "grade": DATA_GRADE_V2.as_vars(),
     }
 
 
@@ -113,6 +113,7 @@ def build_snapshot(ctx: Context, start: datetime, end: datetime) -> dict:
         predicate=f"snapshot_date = '{end.date().isoformat()}' AND snapshot_at = '{sql_ts(end)}'",
         partition_by=["snapshot_date"],
         metadata=ctx.metadata("build_snapshot", start, end),
+        schema_mode="merge",  # the mart may gain columns, e.g. a new grade input
     )
     grades = {g: table.column("data_grade").to_pylist().count(g) for g in "ABC"}
     return {

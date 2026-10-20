@@ -41,7 +41,7 @@
         <dt id="def-feasible_quantity">Quantity</dt>
         <dd>The smallest of the item's buy limit, what 50M GP of capital buys, and 10% of the last 4 hours' instant-sell volume (so your offer is a small part of the market). The label says which one set it.</dd>
         <dt id="def-data_grade">Data grade</dt>
-        <dd>Whether the prices behind the idea are sound: A means both sides traded in nearly every hour of the last day and recently, B is usable with care, C is withheld. Thresholds come from measured price stability, not guesses; see the methodology notes in the repository.</dd>
+        <dd>Whether the prices behind the idea are sound. A means both sides traded in every hour of the last day, the last trade was within 10 minutes, and this hour's prices are within 5% of the item's usual level. B is usable with care. C is withheld, for example when a single stray trade moves the price far from its usual level. The thresholds come from measured price stability, not guesses: see <a href="https://github.com/sKoih-pond/osrs-ge-market-intel/blob/main/docs/methodology/data_grade.md">how the Data grade was derived</a>.</dd>
         <dt id="def-price_window">Price window</dt>
         <dd>The closed hour (UTC) whose 5-minute trade data produced the prices. Nothing after it is used.</dd>
       </dl>

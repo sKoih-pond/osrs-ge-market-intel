@@ -21,7 +21,7 @@ from jsonschema import Draft202012Validator, FormatChecker
 from ge_intel import ops, tax
 from ge_intel.build import SNAPSHOT
 from ge_intel.ingest import BUCKETS, Context
-from ge_intel.policies import CASUAL_V1, DATA_GRADE_V1
+from ge_intel.policies import CASUAL_V1, DATA_GRADE_V2
 from ge_intel.reference import SEEDS
 from ge_intel.timegrid import iso
 
@@ -78,8 +78,8 @@ def snapshot_document(rows: list[dict], end: datetime, generated_at: datetime) -
             "rule": "Seller pays floor(price x rate) per item, capped per item; exempt pay 0.",
         },
         "data_grade": {
-            "version": DATA_GRADE_V1.version,
-            "thresholds": {k: v for k, v in DATA_GRADE_V1.as_vars().items() if k != "version"},
+            "version": DATA_GRADE_V2.version,
+            "thresholds": {k: v for k, v in DATA_GRADE_V2.as_vars().items() if k != "version"},
         },
         "regime_id": rows[0]["regime_id"] if rows else "unknown",
         "counts": {

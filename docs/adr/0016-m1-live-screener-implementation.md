@@ -28,11 +28,13 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 
 ### Grading and the mart (ADR-0008, ADR-0009)
 
-11. **Data grade v1** thresholds come from measured next-hour price drift and two-sided trading: A = both sides traded in all 24 of the last 24 hours and the staler side within 10 minutes; C = fewer than 16 two-sided hours, staler side over 30 minutes, an incomplete or outage price hour, or an incomplete 24-hour window. **Volume was tested and is not used** (it did not separate stable from unstable prices). Derivation: `docs/methodology/data_grade.md`.
+11. **Data grade (v2)** thresholds come from measured next-hour price drift and two-sided trading: A = both sides traded in all 24 of the last 24 hours, the staler side within 10 minutes, and the price hour within 5% of the item's own 24-hour median; C = fewer than 16 two-sided hours, staler side over 30 minutes, the price hour more than 10% from its median, an incomplete or outage price hour, or an incomplete 24-hour window. **Volume was tested and is not used** (it did not separate stable from unstable prices). v1 lacked the median check and in its first live hour ranked a single stray trade (Yellow boots, sell price 85 times the buy price) first; v2 replaced it the same day. Derivation: `docs/methodology/data_grade.md`.
 12. **Prices round against the trader:** buy at the trailing instant-sell VWAP rounded up, sell at the trailing instant-buy VWAP rounded down, both to whole coins before tax (ADR-0007).
 13. **"Recent instant-sell volume" in the feasible quantity is the policy's entry window** (4 hours for casual-v1), the same window the buy offer competes in.
 14. **One tax implementation.** The mart calls `ge_tax_per_item`, a DuckDB macro generated from `ge_intel.tax`'s eras and cap by a dbt-duckdb plugin; a test checks the macro against the Python function on every edge case. (A Python UDF would have needed numpy.)
 15. **The paper record starts.** Every hour's full mart, including `is_idea` and `idea_rank`, is kept in `gold/market_snapshot` under `policy_id = casual-v1`; scoring each idea 24 hours later arrives with the M4 simulator.
+
+15a. **Gold tables may gain columns.** The snapshot write uses delta-rs `schema_mode="merge"`, which adds nullable columns without changing the protocol (reader 1, writer 2, no features; tested). Removing or retyping a column still needs a new table or a rebuild.
 
 ### Publication and deployment (ADR-0012, ADR-0013, ADR-0015)
 

@@ -77,6 +77,40 @@ def coverage_table(hours: list[dict]) -> None:
         row(label, f"{len(vals):,}", f"{statistics.median(errs) * 100:.2f}%", f"{within:.1%}")
 
 
+def envelope_table(hours: list[dict]) -> None:
+    """Distance of the price hour from the item's own 24-hour median (data-grade-v2)."""
+    bands = [1, 1.02, 1.05, 1.1, 1.15, 1.25, 1.5, 2, 3, float("inf")]
+    by_band: dict[float, list] = defaultdict(list)
+    for k in range(24, len(hours) - 1):
+        for item, rec in hours[k - 1].items():
+            if not two_sided(rec):
+                continue
+            window = [hours[j][item] for j in range(k - 24, k) if item in hours[j]]
+            if sum(two_sided(w) for w in window) < 16:
+                continue
+            ratios = []
+            for side in ("avgHighPrice", "avgLowPrice"):
+                median = statistics.median(w[side] for w in window if w.get(side) is not None)
+                ratios.append(max(rec[side] / median, median / rec[side]))
+            nxt = hours[k].get(item)
+            err = None
+            if nxt and two_sided(nxt):
+                err = drift(
+                    (rec["avgHighPrice"], rec["avgLowPrice"]),
+                    (nxt["avgHighPrice"], nxt["avgLowPrice"]),
+                )
+            by_band[max(b for b in bands if b <= max(ratios))].append(err)
+    print()
+    row("Price hour vs own 24-hour median", "Item-hours", "Median next-hour drift")
+    print("|---|---:|---:|")
+    for lo, hi in zip(bands, bands[1:], strict=False):
+        vals = by_band.get(lo, [])
+        errs = [e for e in vals if e is not None]
+        if errs:
+            label = f"x{lo} to x{hi}" if hi != float("inf") else f"x{lo} or more"
+            row(label, f"{len(vals):,}", f"{statistics.median(errs) * 100:.2f}%")
+
+
 def staleness_table(buckets: list[dict]) -> None:
     def vwap(lo: int, hi: int) -> dict[str, tuple[float, float]]:
         acc: dict[str, list[float]] = {}
@@ -133,7 +167,9 @@ def outage_table(buckets: list[dict]) -> None:
 
 
 if __name__ == "__main__":
-    coverage_table(load("1h"))
+    hourly = load("1h")
+    coverage_table(hourly)
+    envelope_table(hourly)
     five = load("5m")[-288:]  # the 24-hour window before the fixture hour
     staleness_table(five)
     outage_table(five)

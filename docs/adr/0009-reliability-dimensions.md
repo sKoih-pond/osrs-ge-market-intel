@@ -4,7 +4,7 @@
 - **Date:** 2026-10-20
 - **Decided by:** Agreed in the kickoff walkthrough (brief section 3C)
 
-> **Data grade v1 set in M1 (ADR-0016, 2026-10-20):** thresholds derived from measured next-hour price drift and two-sided trading on 680,069 post-switch item-hours; volume was tested and not used. Definitions and tables: `docs/methodology/data_grade.md`.
+> **Data grade set in M1 (ADR-0016, 2026-10-20):** thresholds derived from measured next-hour price drift, two-sided trading and distance from the item's own 24-hour median, on 680,069 post-switch item-hours; volume was tested and not used. v2 replaced v1 after its first live hour. Definitions and tables: `docs/methodology/data_grade.md`.
 
 ## Context
 
