@@ -5,8 +5,9 @@ name: hourly
 # run succeeded, the second finds every task complete and writes nothing.
 on:
   schedule:
-    - cron: "7 * * * *"
-    - cron: "27 * * * *"
+    # Changed from :07 and :27 on 20 Oct 2026: GitHub never fired the first schedule, and
+    # editing the cron line makes it register the schedule again (docs/runbook.md).
+    - cron: "6,26 * * * *"
   workflow_dispatch:
     inputs:
       end:
