@@ -6,8 +6,8 @@ How the hourly pipeline runs, what can go wrong, and what to do. Decisions behin
 
 | Workflow | When | Does |
 |---|---|---|
-| `hourly` | `:07` and `:27` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance (weekly, Monday 00:xx UTC) |
-| `watchdog` | `:11` and `:41` every hour | Reads the public `status.json` and the `hourly` workflow's state; opens one issue labelled `watchdog` when data is over 2 hours old or the schedule is off, and closes it on recovery |
+| `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance (weekly, Monday 00:xx UTC) |
+| `watchdog` | `:13` and `:43` every hour | Reads the public `status.json` and the `hourly` workflow's state; opens one issue labelled `watchdog` when data is over 2 hours old or the schedule is off, and closes it on recovery |
 | `ci` | Every pull request and push to `main` | Lint, unit, contract and end-to-end tests, Wrangler dry run |
 
 Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ANALYTICS_TOKEN`; variables `CLOUDFLARE_ACCOUNT_ID`, `GE_DEPLOY_ENABLED` (`true` to deploy to `kohstack.tech/ge/`), `GE_GUARD_ACK_RUN_ID` (see below).
@@ -36,6 +36,14 @@ Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_A
 - **Data is stale:** look at the latest `hourly` runs. If they are failing, see above. If they are not running at all, check the schedule (next item) and the Actions status page.
 - **Schedule disabled (`disabled_inactivity` or `disabled_manually`):** GitHub switches scheduled workflows off after 60 days without repository activity. Re-enable `hourly` (and `watchdog`) in the Actions tab, workflow page, Enable workflow. A commit to `main` resets the 60-day clock.
 - The issue closes itself once data is fresh and the schedule is active.
+
+## The schedule never fires
+
+Seen on 20 October 2026: after `hourly.yml` and `watchdog.yml` first landed on `main`, GitHub ran no `schedule` event for either workflow for four hours, with no GitHub incident open and manual runs working. Check with `gh api "repos/sKoih-pond/osrs-ge-market-intel/actions/runs?event=schedule&per_page=1" --jq .total_count`.
+
+1. Keep the data fresh by hand meanwhile: Actions tab, `hourly`, Run workflow (each run catches up every missed bucket).
+2. Make GitHub register the schedule again by changing the `cron:` line itself (a different minute is enough) in a pull request and merging it. Changes elsewhere in the repository do not re-register it.
+3. If scheduled runs still do not start, the fallback is an external clock: a Cloudflare Worker cron trigger that calls the `workflow_dispatch` API. That is an account change and needs a fine-grained GitHub token, so it waits for Sylvester.
 
 ## Pausing the pipeline
 

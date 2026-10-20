@@ -14,7 +14,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 
 1. **Registry and entry points.** `ge_intel.tasks.REGISTRY` lists every task with its upstream tasks, cadence (`gap-fill`, `hourly`, `daily`, `weekly`) and the tables it writes. `ge-intel run <task> --start --end` is the Airflow-ready interface; `ge-intel hourly` is the Phase B scheduler shim that walks the registry in order for the newest closed hour. `ge-intel tasks` prints the registry as JSON for DAG generation in M7.
 2. **Completion.** A task skips an interval already recorded as `success` in `ops/task_runs` unless `--force`. `ingest_5m` is the exception: the bucket manifest (`silver/wiki_5m_buckets`) is its completeness record, so it always asks storage what is missing. Each process writes its `ops/task_runs` rows in **one commit at exit**, and writes nothing when every task was already complete.
-3. **Two schedule slots an hour** (`:07` and `:27`). GitHub drops or delays scheduled runs under load; with one slot, every dropped run is a late hour against AT4. The second slot is a no-op when the first succeeded (no R2 writes, a few reads).
+3. **Two schedule slots an hour** (`:06` and `:26`; first `:07` and `:27`, changed the same day because GitHub never fired the original schedule, see the runbook). GitHub drops or delays scheduled runs under load; with one slot, every dropped run is a late hour against AT4. The second slot is a no-op when the first succeeded (no R2 writes, a few reads).
 4. **dbt runs in its own process.** dbt-duckdb keeps its DuckDB connection open in-process, which blocks reading the mart afterwards; a subprocess (as Cosmos will run it in Phase C) isolates it.
 
 ### Ingestion (ADR-0005)
