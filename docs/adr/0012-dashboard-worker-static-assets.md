@@ -8,7 +8,7 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 9)
 
-> **Implemented in M1 (ADR-0016, 2026-10-20):** `site/wrangler.jsonc` is the S2 production config; the M1 page is plain HTML, CSS and JavaScript (Vite arrives in M6). Deploys run only when the repository variable `GE_DEPLOY_ENABLED` is `true`, and a publish counts as `success` only once deployed. Preview links (`workers.dev`) remain an open decision for Sylvester.
+> **Implemented in M1 (ADR-0016, 2026-10-20):** `site/wrangler.jsonc` is the S2 production config; the M1 page is plain HTML, CSS and JavaScript (Vite arrives in M6). Deploys run only when the repository variable `GE_DEPLOY_ENABLED` is `true`, and a publish counts as `success` only once deployed. Preview links remain an open decision: since 20 October the account has the `kohstack.workers.dev` subdomain (created for ge-clock's Cron Triggers, ADR-0017), but `ge-dashboard` keeps `workers_dev` and preview URLs off.
 
 ## Context
 

@@ -1,6 +1,6 @@
 # ADR-0017: The hourly clock is a Cloudflare Cron Trigger, not GitHub's scheduler
 
-- **Status:** Accepted, deployment pending Sylvester's token (see Consequences)
+- **Status:** Accepted; deployed 2026-10-20 13:29 UTC
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (fall back to a Cloudflare cron trigger if re-registering the GitHub schedule failed); amends ADR-0001
 
@@ -17,6 +17,7 @@ A clock that never ticks fails AT4 (95% of hours published within 45 minutes) ou
 - **One secret:** `GITHUB_DISPATCH_TOKEN`, a fine-grained GitHub personal access token limited to this repository with **Actions: read and write** and nothing else. Sylvester creates it and stores it as the repository secret `GH_DISPATCH_TOKEN`; the `deploy-clock` workflow pipes it into the Worker secret, so the value never appears in a file, log or chat.
 - **The GitHub schedules stay.** If GitHub starts firing them, the two clocks overlap harmlessly: runs queue on the `ge-intel-lake-writer` concurrency group and a second run in the same hour finds every task complete.
 - A dispatch that GitHub refuses throws, so it shows as a failed invocation in the Worker's logs (observability on).
+- **Prerequisite found at deploy:** Cloudflare refuses Cron Triggers on an account without a `workers.dev` subdomain (API error 10063), even for a Worker with `workers_dev: false`. Sylvester approved creating it; the account subdomain is `kohstack.workers.dev`. Both `ge-dashboard` and `ge-clock` keep `workers_dev` and preview URLs off (checked through the API after creation), so neither is served there.
 
 ## Consequences
 

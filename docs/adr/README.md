@@ -22,7 +22,7 @@ Status values: **Accepted**, **Accepted, pending spike** (holds unless the named
 | [0014](0014-repository-ci-secrets.md) | Repository, CI, secrets and code licence (MIT) | Accepted, amended by 0016 |
 | [0015](0015-r2-free-tier-by-construction.md) | R2 stays inside the free tier by construction | Accepted, amended by 0016 |
 | [0016](0016-m1-live-screener-implementation.md) | M1 live screener: implementation decisions | Accepted |
-| [0017](0017-clock-cloudflare-cron-dispatch.md) | The hourly clock is a Cloudflare Cron Trigger, not GitHub's scheduler | Accepted, deployment pending token |
+| [0017](0017-clock-cloudflare-cron-dispatch.md) | The hourly clock is a Cloudflare Cron Trigger, not GitHub's scheduler | Accepted (deployed) |
 
 Source of the decisions: `docs/decisions/2026-10-20_kickoff_decisions.md`. Evidence: `docs/research/2026-10-20_discovery_report.md`.
 
