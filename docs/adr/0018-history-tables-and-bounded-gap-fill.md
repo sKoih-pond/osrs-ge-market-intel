@@ -4,7 +4,7 @@
 - **Date:** 2026-10-22
 - **Decided by:** Agent, within the M2 planning scope set by Sylvester; measured where noted. Amends ADR-0005 and ADR-0016 (each carries a note).
 
-> **Where it runs, amended by ADR-0020 (Proposed, 2026-10-21):** the history job runs on a hand-started GitHub runner (`history` workflow, its own `ge-intel-history-writer` group) instead of the laptop, which stays possible. Decision 4 holds on the runner's disk: each run rebuilds every `history/` table from the pinned dump and the raw responses; the raw responses persist between runs in `history/raw_wiki` in R2, an input that `build` never writes and `upload` never copies.
+> **Where it runs, amended by ADR-0020 (Proposed, 2026-10-21):** the history job runs on a GitHub runner started on request, by Sylvester or an agent he has asked (`history` workflow, its own `ge-intel-history-writer` group), instead of the laptop, which stays possible. Decision 4 holds on the runner's disk: each run rebuilds every `history/` table from the pinned dump and the raw responses; the raw responses persist between runs in `history/raw_wiki` in R2, an input that `build` never writes and `upload` never copies.
 
 ## Context
 

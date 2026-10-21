@@ -25,7 +25,7 @@ Status values: **Accepted**, **Accepted, pending spike** (holds unless the named
 | [0017](0017-clock-cloudflare-cron-dispatch.md) | The hourly clock is a Cloudflare Cron Trigger, not GitHub's scheduler | Accepted (deployed) |
 | [0018](0018-history-tables-and-bounded-gap-fill.md) | History has its own tables and writer; the live gap-fill looks back 7 days at most | Proposed (M2 preparation PR); amended by 0020 (runs on a GitHub runner) |
 | [0019](0019-live-table-retention.md) | Live tables keep ideas for ever and the rest for 30 days; closed months in zstd; fewer checkpoints | Proposed (each rule off until Sylvester turns it on); C2's destination set by 0020 |
-| [0020](0020-history-job-on-a-github-runner.md) | The history job runs on a hand-started GitHub runner; its raw responses live in R2 | Proposed |
+| [0020](0020-history-job-on-a-github-runner.md) | The history job runs on a GitHub runner started on request; its raw responses live in R2 | Proposed |
 
 Source of the decisions: `docs/decisions/2026-10-20_kickoff_decisions.md`. Evidence: `docs/research/2026-10-20_discovery_report.md`.
 

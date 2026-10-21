@@ -1,20 +1,22 @@
 name: history
 
 # The M2 history job (ADR-0018) on a throwaway runner instead of the laptop (ADR-0020). Started
-# by hand only: the Kaggle download, the Wiki requests and the upload are Sylvester's to start.
-# Each run restores the job's raw Wiki responses from R2, takes the pinned Kaggle dump (from
-# the Actions cache after the first run), rebuilds history/ on the runner's disk, runs the
-# chosen step and saves any new responses back to R2. Runbook: "History (M2)".
+# on request only: by Sylvester from the Actions tab, or by an agent he has asked to run it,
+# through the API. No GitHub schedule (it never fired reliably here, ADR-0017); repeat runs are
+# the requester's to schedule. Each run restores the job's raw Wiki responses from R2, takes the
+# pinned Kaggle dump (from the Actions cache after the first run), rebuilds history/ on the
+# runner's disk, runs the chosen step and saves any new responses back to R2. Runbook:
+# "History (M2)".
 on:
   workflow_dispatch:
     inputs:
       step:
-        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill or upload"
+        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill, check-and-fill (both, one run) or upload"
         type: choice
-        options: [plan, build, check-1h, fill, upload]
+        options: [plan, build, check-1h, fill, check-and-fill, upload]
         default: plan
       dry_run:
-        description: "check-1h, fill, upload: report only, send and write nothing"
+        description: "check-1h, fill, check-and-fill, upload: report only, send and write nothing"
         type: boolean
         default: true
       limit:
@@ -93,16 +95,25 @@ jobs:
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
           fi
+      # check-and-fill runs the month checks, then the fill, in one run: one dispatch carries
+      # the job to the point of upload. A quarantined month is a result, not a failure; it
+      # stays out of the upload and waits for a decision (plan, section 5.1).
       - name: Wiki requests
-        if: inputs.step == 'check-1h' || inputs.step == 'fill'
+        if: contains(fromJSON('["check-1h", "fill", "check-and-fill"]'), inputs.step)
         env:
           STEP: ${{ inputs.step }}
           DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
           LIMIT: ${{ inputs.limit }}
-        run: uv run ge-intel history "$STEP" $DRY ${LIMIT:+--limit "$LIMIT"}
+        run: |
+          if [ "$STEP" = check-and-fill ]; then
+            uv run ge-intel history check-1h $DRY
+            uv run ge-intel history fill $DRY ${LIMIT:+--limit "$LIMIT"}
+          else
+            uv run ge-intel history "$STEP" $DRY ${LIMIT:+--limit "$LIMIT"}
+          fi
       # Runs even if the requests stopped partway, so nothing fetched is fetched twice.
       - name: Save new raw Wiki responses to R2
-        if: always() && (inputs.step == 'check-1h' || inputs.step == 'fill') && !inputs.dry_run
+        if: always() && contains(fromJSON('["check-1h", "fill", "check-and-fill"]'), inputs.step) && !inputs.dry_run
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

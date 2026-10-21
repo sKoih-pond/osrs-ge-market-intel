@@ -1,4 +1,4 @@
-# ADR-0020: The history job runs on a hand-started GitHub runner; its raw responses live in R2
+# ADR-0020: The history job runs on a GitHub runner started on request; its raw responses live in R2
 
 - **Status:** Proposed (accepted when Sylvester merges the PR that carries it)
 - **Date:** 2026-10-21
@@ -14,13 +14,13 @@ Very little of that needs a permanent home:
 - **The raw Wiki responses** are inputs and cannot be fetched again without asking the Wiki again: about 541 known requests (405 seam buckets, 136 `/1h` checks) plus the dump's gaps, at most about 60 KB a gzipped response (the discovery report's `/1h` estimate: 49,300 requests, about 3 GB), so well under 0.1 GB.
 - **C2's archive** comes later, if at all (ADR-0019).
 
-The constraints: no card on file anywhere that could be charged (ADR-0015's free tier by construction), the raw archive and full history stay private (ADR-0013), one writer per table (ADR-0018), and downloads, Wiki requests and the upload are Sylvester's to start (delegation plan).
+The constraints: no card on file anywhere that could be charged (ADR-0015's free tier by construction), the raw archive and full history stay private (ADR-0013), one writer per table (ADR-0018), and downloads, Wiki requests and the upload are Sylvester's to start (delegation plan), which he may hand to an agent (he asked for that on 21 October 2026, so that runs can go ahead without him). The Wiki asks for a note in its Discord channel before a backfill; that note comes first either way.
 
 ## Decision
 
-### 1. A workflow that only a person starts
+### 1. A workflow that runs only on request
 
-`.github/workflows/history.yml`, `workflow_dispatch` only, with three inputs: the step (`plan`, `build`, `check-1h`, `fill`, `upload`), `dry_run` (on by default) and `limit` for `fill`.
+`.github/workflows/history.yml`, `workflow_dispatch` only: Sylvester starts it from the Actions tab, or an agent he has asked to run it starts it through GitHub's API and schedules any later runs with its own scheduled tasks. There is no GitHub schedule; GitHub's scheduler never fired reliably here (ADR-0017). Three inputs: the step (`plan`, `build`, `check-1h`, `fill`, `check-and-fill`, which runs the month checks and then the fill in one run, or `upload`), `dry_run` (on by default, so a bare request sends and writes nothing) and `limit` for `fill`. An agent stops at the same decision points as a person: a quarantined month, a revision, and the upload while ADR-0019's retention decision is open.
 - A standard GitHub-hosted runner: free and unlimited for a public repository, 4 CPUs, 16 GB of memory and a 14 GB disk; the job first removes SDKs it never uses, for margin over the 9 GB peak. Timeout 4 hours.
 - Its own concurrency group, `ge-intel-history-writer`: the job writes only `history/`, so it never queues behind or blocks the hourly run (ADR-0018 decision 1).
 - R2 secrets reach only the steps that read or write R2 (ADR-0014; a test checks it).

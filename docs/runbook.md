@@ -88,9 +88,9 @@ Expected around the first weekly runs: a step **up** after compaction (26 Octobe
 
 ## History (M2)
 
-The history job (`ge-intel history`, ADR-0018, `docs/plans/M2.md`) writes only the `history/` tables. Downloads, Wiki requests and the upload are Sylvester's to start. It runs on a GitHub runner (ADR-0020), so the MacBook needs no disk:
+The history job (`ge-intel history`, ADR-0018, `docs/plans/M2.md`) writes only the `history/` tables. Downloads, Wiki requests and the upload are Sylvester's to start, or an agent's he has asked to run it (ADR-0020); the note in the Wiki's Discord channel comes before the first Wiki request either way. It runs on a GitHub runner, so the MacBook needs no disk:
 
-1. Actions tab, `history`, Run workflow. Pick the step: `plan` (a dry run of everything; downloads nothing), `build` (download and build only), `check-1h`, `fill` (optional `limit`) or `upload`. `dry_run` is on by default: turn it off to send the Wiki requests or write to R2.
+1. Actions tab, `history`, Run workflow (an agent dispatches the same workflow through the API). Pick the step: `plan` (a dry run of everything; downloads nothing), `build` (download and build only), `check-1h`, `fill` (optional `limit`), `check-and-fill` (both, in one run) or `upload`. `dry_run` is on by default: turn it off to send the Wiki requests or write to R2. An agent reports each run's outcome and stops where a person would: a quarantined month, a revision, or the upload while ADR-0019's retention decision is open.
 2. Each run restores the raw Wiki responses from R2 (`history pull`), takes the Kaggle dump from the Actions cache (or downloads and caches it), builds `history/` on the runner, runs the step, and saves any new responses to `history/raw_wiki` (`history push`, also when the step stopped partway). Runs queue one at a time (`ge-intel-history-writer`) and never wait on `hourly`.
 3. After the first download, the run summary lists the Kaggle hashes it recorded: commit them in `src/ge_intel/sources/kaggle_osrs_ge_5m_v1.json` (a small PR).
 

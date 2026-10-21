@@ -79,10 +79,10 @@ def guard(ctx: Context) -> int:
 
 
 def run_history(step: str, dry_run: bool, limit: int | None) -> int:
-    """The M2 history job (ADR-0018), started by hand: downloads, Wiki requests and the
-    upload are Sylvester's to start (docs/kickoff/delegation_plan.md). It runs on a throwaway
-    GitHub runner (`history` workflow) or the laptop; `pull` and `push` keep its raw Wiki
-    responses in `history/raw_wiki` between runs (ADR-0020)."""
+    """The M2 history job (ADR-0018), run only on request: downloads, Wiki requests and the
+    upload are Sylvester's to start, or an agent's he has asked (docs/kickoff/delegation_plan.md,
+    ADR-0020). It runs on a throwaway GitHub runner (`history` workflow) or the laptop; `pull`
+    and `push` keep its raw Wiki responses in `history/raw_wiki` between runs."""
     h = history.History(
         Path(os.environ.get("GE_HISTORY_DIR", "data/history")),
         client=WikiClient() if step in ("check-1h", "fill") else None,
