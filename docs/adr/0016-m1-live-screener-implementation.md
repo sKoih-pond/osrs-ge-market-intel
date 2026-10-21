@@ -19,7 +19,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 
 ### Ingestion (ADR-0005)
 
-5. **Gap-fill newest first, 96 buckets per run.** The newest buckets come first so the current hour publishes even mid-catch-up; older gaps follow on later runs. 96 buckets is about 100 seconds of requests at 1 per second and about 100 `PutObject` calls, inside the per-run caps. A one-hour skip (12 buckets) is always filled by the next run.
+5. **Gap-fill newest first, 96 buckets per run** (amended by ADR-0018: the scheduler looks back 7 days at most). The newest buckets come first so the current hour publishes even mid-catch-up; older gaps follow on later runs. 96 buckets is about 100 seconds of requests at 1 per second and about 100 `PutObject` calls, inside the per-run caps. A one-hour skip (12 buckets) is always filled by the next run.
 6. **Write order for crash safety.** Facts (`silver/prices_5m`, replace-where on exactly the fetched buckets) commit before the manifest. A crash between them leaves the bucket unrecorded, so the next run re-fetches it and the replace-where overwrites instead of duplicating. Tested.
 7. **Outage rule: 0.6 of the trailing 24-hour median item count**, with 15 minutes' grace for an empty bucket that may not be published yet. Derivation: `docs/methodology/outage_rule.md`.
 8. **Bronze keys include a content hash:** `bronze/wiki/<endpoint>/date=<day>/<bucket epoch>-<sha256[:12]>.json.gz`. Keys stay deterministic from (endpoint, bucket, content); a revised response becomes a second object instead of being silently lost, and writes are write-if-absent.

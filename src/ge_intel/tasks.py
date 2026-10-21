@@ -21,6 +21,12 @@ from ge_intel.build import build_snapshot
 from ge_intel.ingest import Context
 from ge_intel.timegrid import DAY, HOUR, floor, iso
 
+# How far back the scheduler heals the live 5-minute series by itself (ADR-0018): 2,016
+# buckets, cleared in about 11 hours at 96 a run and two runs an hour. An older gap is a
+# backfill, which a person starts (`ge-intel run ingest_5m --start --end`); history before
+# go-live lives in its own tables and never reaches this manifest.
+LIVE_GAP_WINDOW = timedelta(days=7)
+
 
 @dataclass(frozen=True)
 class Task:
@@ -119,13 +125,13 @@ def interval_for(ctx: Context, task: Task, end_hour: datetime) -> tuple[datetime
         monday = floor(end_hour, DAY) - timedelta(days=end_hour.weekday())
         return monday - timedelta(days=7), monday
     if task.cadence == "gap-fill":
-        # Everything since the first recorded bucket; the trailing day on a fresh lake so the
-        # first snapshot has its full 24-hour window.
+        # Everything since the first recorded bucket (the trailing day on a fresh lake, so the
+        # first snapshot has its full 24-hour window), but never more than LIVE_GAP_WINDOW back.
         first = ingest.first_bucket(ctx)
-        start = (
-            min(first, end_hour - timedelta(hours=24)) if first else end_hour - timedelta(hours=24)
-        )
-        return start, end_hour
+        start = end_hour - timedelta(hours=24)
+        if first is not None:
+            start = min(first, start)
+        return max(start, end_hour - LIVE_GAP_WINDOW), end_hour
     raise ValueError(task.cadence)
 
 

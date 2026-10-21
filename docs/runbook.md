@@ -57,7 +57,24 @@ To replace it (on any suspicion of exposure, or if it is revoked): create a new 
 
 ## Pausing the pipeline
 
-Disable the `hourly` workflow in the Actions tab. The page keeps serving the last published data, and after 2 hours every page shows the staleness warning (computed in the browser, no deploy needed). The watchdog will open an issue; that is expected. Re-enable the workflow to resume: the first run catches up up to 8 hours of buckets, newest first, and later runs fill the rest.
+Disable the `hourly` workflow in the Actions tab. The page keeps serving the last published data, and after 2 hours every page shows the staleness warning (computed in the browser, no deploy needed). The watchdog will open an issue; that is expected. Re-enable the workflow to resume: the first run catches up up to 8 hours of buckets, newest first, and later runs fill the rest, up to 7 days back (ADR-0018).
+
+## A live gap older than 7 days
+
+The scheduler heals the live 5-minute series 7 days back and no further, so a longer outage leaves older buckets missing (the status page's completeness shows them). Filling them is a backfill, started by hand:
+
+1. List them: `ge-intel gaps --start <UTC ISO-8601>`.
+2. Disable the `hourly` workflow (one writer at a time).
+3. From the laptop, with the R2 keys in the environment: `ge-intel run ingest_5m --start <UTC> --end <UTC>`. Each run fetches at most 96 buckets, newest first; repeat until `gaps` reports none.
+4. Re-enable `hourly`.
+
+## History (M2)
+
+The history job (`ge-intel history`, ADR-0018, `docs/plans/M2.md`) runs on the laptop, by hand, and writes only the `history/` tables. Downloads, Wiki requests and the upload are Sylvester's to start. Order: `plan`, `download`, `build`, `check-1h`, `fill`, `upload`; each takes `--dry-run`. Files live under `GE_HISTORY_DIR` (default `data/history`, git-ignored). Exit code 4: a step's inputs are not ready; the log says which.
+
+- **A month is quarantined** (`build` or `check-1h` reports it; details in `history/months.check_detail`): it stays out of R2. Look at the mismatching items before deciding on a fallback (plan, section 5.1).
+- **`RevisionFound`:** two different Wiki bodies are stored for one bucket under `data/history/bronze/`. Compare them; delete the one that should not stand, then `build` again.
+- **`PinMismatch`:** a downloaded or local file differs from its pin. Do not edit the pin to make it pass; a changed file is a new source.
 
 ## Deploying and rolling back the page
 

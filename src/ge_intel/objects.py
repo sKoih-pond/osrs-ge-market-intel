@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import hashlib
 import hmac
+import json
 import time
 import urllib.error
 import urllib.parse
@@ -31,7 +32,8 @@ class ObjectStore(Protocol):
 
 
 class LocalStore:
-    """Filesystem stand-in for tests and local runs."""
+    """Filesystem stand-in for tests and local runs, and the history job's raw store. The
+    metadata R2 keeps with an object is kept beside it, in `<key>.meta.json`."""
 
     def __init__(self, root: str | Path):
         self.root = Path(root)
@@ -41,6 +43,9 @@ class LocalStore:
         if path.exists():
             return False
         path.parent.mkdir(parents=True, exist_ok=True)
+        if metadata:  # before the object itself, so an object never lacks its metadata
+            meta = path.with_name(path.name + ".meta.json")
+            meta.write_text(json.dumps(dict(metadata), sort_keys=True) + "\n")
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_bytes(body)
         tmp.replace(path)

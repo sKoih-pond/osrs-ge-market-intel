@@ -14,7 +14,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 
 import pyarrow as pa
-from deltalake import CommitProperties, DeltaTable, write_deltalake
+from deltalake import CommitProperties, DeltaTable, WriterProperties, write_deltalake
 
 from ge_intel.objects import LocalStore, ObjectStore, R2Store
 
@@ -78,8 +78,10 @@ class Lake:
         metadata: Mapping[str, str] | None = None,
         mode: str = "overwrite",
         schema_mode: str | None = None,
+        writer_properties: WriterProperties | None = None,
     ) -> int:
-        """One commit: replace rows matching `predicate` (or the whole table) with `data`.
+        """One commit: replace rows matching `predicate` (or the whole table) with `data`, a
+        table or a stream of record batches.
 
         `schema_mode="merge"` lets a write add nullable columns (protocol unchanged); without
         it delta-rs refuses data whose columns differ from the table's.
@@ -94,12 +96,14 @@ class Lake:
             partition_by=partition_by,
             schema_mode=schema_mode if dt is not None else None,
             storage_options=self.storage_options,
+            writer_properties=writer_properties,
             commit_properties=CommitProperties(custom_metadata=dict(metadata or {})),
         )
         dt = DeltaTable(self.uri(name), storage_options=self.storage_options)
         dt.create_checkpoint()
         version = dt.version()
-        self.commits.append({"table": name, "version": version, "rows": data.num_rows})
+        rows = getattr(data, "num_rows", None)  # unknown for a stream
+        self.commits.append({"table": name, "version": version, "rows": rows})
         return version
 
 

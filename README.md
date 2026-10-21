@@ -32,6 +32,7 @@ Wiki API v2 ──> ingest (/5m gap-fill, /latest, /mapping) ──> R2: bronze 
 | `docs/adr/` | Architecture decision records |
 | `docs/spikes/` | Plans and results of the Delta-on-R2 and Worker spikes |
 | `docs/methodology/` | How the Data grade and the outage rule were derived from data |
+| `docs/plans/` | Milestone plans (M2: historical foundation) |
 | `docs/runbook.md`, `docs/data_contract.md` | Operating the pipeline; the published v1 contract |
 | `src/ge_intel/` | Pipeline package: Wiki client, ingestion, lake, tasks and CLI, tax, cost guard, publish, watchdog |
 | `src/ge_intel/seeds/` | Regimes and the era-aware tax-exemption list, read by Python and dbt |
@@ -66,4 +67,4 @@ Price data: OSRS Wiki real-time prices API (RuneLite data before 30 September 20
 
 ## Licence
 
-Code and documentation: MIT, see [LICENSE](LICENSE) (ADR-0014). The MIT licence does not cover price data: the recorded responses in `tests/fixtures/wiki/` and the published data files are CC BY-NC-SA 3.0, with their own notice (ADR-0013).
+Code and documentation: MIT, see [LICENSE](LICENSE) (ADR-0014). The MIT licence does not cover price data: the recorded responses in `tests/fixtures/wiki/`, the dump-format sample in `tests/fixtures/kaggle/` and the published data files are CC BY-NC-SA 3.0, with their own notice (ADR-0013).
