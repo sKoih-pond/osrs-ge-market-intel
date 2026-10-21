@@ -13,347 +13,347 @@
     {
       "name": "items.parquet",
       "bytes": 138740,
-      "sha256": null
+      "sha256": "28731110a67edf2b715bf780a744fc2631ad2200c2c5d3494e6379c94bc1ab10"
     },
     {
       "name": "prices_5m/year=2021/month=03/data.parquet",
       "bytes": 54977477,
-      "sha256": null
+      "sha256": "2b26126d21f752bc5c927ed0e9f172104bdf3fe22c974c892bf238853f2f7832"
     },
     {
       "name": "prices_5m/year=2021/month=04/data.parquet",
       "bytes": 67418671,
-      "sha256": null
+      "sha256": "e1573c89253841274b6a170286c8aaf9808c1539badf25fcebe3c3466952a720"
     },
     {
       "name": "prices_5m/year=2021/month=05/data.parquet",
       "bytes": 66472850,
-      "sha256": null
+      "sha256": "0abde8d514befd4cee07263b3b6d282410c6f9e52f66159f3ae93dd1daffe555"
     },
     {
       "name": "prices_5m/year=2021/month=06/data.parquet",
       "bytes": 63400138,
-      "sha256": null
+      "sha256": "810da0997cb6166b88f046b4319623c4b0486133c1b48bca135ea76260c3ab02"
     },
     {
       "name": "prices_5m/year=2021/month=07/data.parquet",
       "bytes": 65149901,
-      "sha256": null
+      "sha256": "9ce5c9199620e079d134cace4add15695af6a394c5ce659f8ab9c35d1f5e0e93"
     },
     {
       "name": "prices_5m/year=2021/month=08/data.parquet",
       "bytes": 67175292,
-      "sha256": null
+      "sha256": "dd6b9a189119686d890676bca9c87000372c746a02c02efe397d89d44cb1f6f8"
     },
     {
       "name": "prices_5m/year=2021/month=09/data.parquet",
       "bytes": 63200947,
-      "sha256": null
+      "sha256": "ee463bcfb28abb8032807e8e9db5544dd513cb3b99d93e4a9ed8486463fd087e"
     },
     {
       "name": "prices_5m/year=2021/month=10/data.parquet",
       "bytes": 63161252,
-      "sha256": null
+      "sha256": "0aeeb50f1568fcc116822395a6c4081f55f9fe3df93a930fcd62228fac97f315"
     },
     {
       "name": "prices_5m/year=2021/month=11/data.parquet",
       "bytes": 60808521,
-      "sha256": null
+      "sha256": "69fb7554d16ba2ba82e3ca74d59295b30a3effec6e250fc5c3d3dd7633b1a2b3"
     },
     {
       "name": "prices_5m/year=2021/month=12/data.parquet",
       "bytes": 58657676,
-      "sha256": null
+      "sha256": "6cebbb1ce300db13097d98aa7c7b97fd7739e31385218b98c87719e59fabe310"
     },
     {
       "name": "prices_5m/year=2022/month=01/data.parquet",
       "bytes": 63609677,
-      "sha256": null
+      "sha256": "ba3965f0c0077df2653e2731f9510b1f43b358003789ce9996d24bc1ffd7d65e"
     },
     {
       "name": "prices_5m/year=2022/month=02/data.parquet",
       "bytes": 55286244,
-      "sha256": null
+      "sha256": "d5ee9949c149ecccfc68618f0572ec1d501be828344eac494094ce818904e32e"
     },
     {
       "name": "prices_5m/year=2022/month=03/data.parquet",
       "bytes": 59544298,
-      "sha256": null
+      "sha256": "bfb426b249fb3625b89c08c9970526d8b6c1346a3ac4957a679bac2a3fdc1f0e"
     },
     {
       "name": "prices_5m/year=2022/month=04/data.parquet",
       "bytes": 60069015,
-      "sha256": null
+      "sha256": "b7a1aee94e8a4e003b12842f193b3d4a8fa2e42187c65118850e76df64d1f975"
     },
     {
       "name": "prices_5m/year=2022/month=05/data.parquet",
       "bytes": 62874249,
-      "sha256": null
+      "sha256": "33c46f93cd13ecd6fec6ada1cc8bddf798eba84759122ad9c2830737b7b61952"
     },
     {
       "name": "prices_5m/year=2022/month=06/data.parquet",
       "bytes": 60875933,
-      "sha256": null
+      "sha256": "19d8341abab75c100c38c59498f28b4a31af3144bd289c5dc363d2cff08f8d3c"
     },
     {
       "name": "prices_5m/year=2022/month=07/data.parquet",
       "bytes": 67179198,
-      "sha256": null
+      "sha256": "0706fd29d503e84c6a39591bab65c13d997d68bb60dc335c1bd33c3d8d0a7314"
     },
     {
       "name": "prices_5m/year=2022/month=08/data.parquet",
       "bytes": 67681580,
-      "sha256": null
+      "sha256": "a7eed11f8897aab7eba41a734058d2064fbd78e7de44505cd4e665da66f38e58"
     },
     {
       "name": "prices_5m/year=2022/month=09/data.parquet",
       "bytes": 64102912,
-      "sha256": null
+      "sha256": "d9bbde3c55367cecd17856e931c0f89bb63555dd6c8f9e0e5592f17a1c287d5c"
     },
     {
       "name": "prices_5m/year=2022/month=10/data.parquet",
       "bytes": 66552862,
-      "sha256": null
+      "sha256": "f3946ac9547c3d54aa478b02b451eb9353a4444bbed7e16e5b76c858ee0140e0"
     },
     {
       "name": "prices_5m/year=2022/month=11/data.parquet",
       "bytes": 60787626,
-      "sha256": null
+      "sha256": "49176002f83d2fb9212dfb7df0fded9c79340bc2232c3b47d4fc2f1f17de513c"
     },
     {
       "name": "prices_5m/year=2022/month=12/data.parquet",
       "bytes": 68941811,
-      "sha256": null
+      "sha256": "ac0943ec74a4380f95825d84ad09b8ed95a9f51772b751d66e0d4e4c94bb6f51"
     },
     {
       "name": "prices_5m/year=2023/month=01/data.parquet",
       "bytes": 72004565,
-      "sha256": null
+      "sha256": "7e55630e20e57c673ac5bfc40e7f706d34fef01e1d0ebf3ef4efad78ddd60c66"
     },
     {
       "name": "prices_5m/year=2023/month=02/data.parquet",
       "bytes": 66705032,
-      "sha256": null
+      "sha256": "51f59317ca36b33abd70c7016aa2e64da7b88ea2d331fc711ebbf8d755670566"
     },
     {
       "name": "prices_5m/year=2023/month=03/data.parquet",
       "bytes": 72916888,
-      "sha256": null
+      "sha256": "6b30d10e0dc92a1111d2ade700d15e41ceb6ea4058d0eb55ddf97aac586da49a"
     },
     {
       "name": "prices_5m/year=2023/month=04/data.parquet",
       "bytes": 69099076,
-      "sha256": null
+      "sha256": "87099c1bd1be482e3a7b08f67e861fce88bc1cc01ec283a9bc3abfee6bfd3db1"
     },
     {
       "name": "prices_5m/year=2023/month=05/data.parquet",
       "bytes": 70578875,
-      "sha256": null
+      "sha256": "d4857ed1d3346fe36908b129dcb265cc7b2ef125b2d31c02e57825409a5271d5"
     },
     {
       "name": "prices_5m/year=2023/month=06/data.parquet",
       "bytes": 70557575,
-      "sha256": null
+      "sha256": "69b6c0b373c514e828fd14659e7632e1acec3c6c9022646f3bd03550775a221c"
     },
     {
       "name": "prices_5m/year=2023/month=07/data.parquet",
       "bytes": 70579181,
-      "sha256": null
+      "sha256": "f4b061866d08faf282a8bb59dabc6d55059d62d803fc0dd5c412fb4b67860bc5"
     },
     {
       "name": "prices_5m/year=2023/month=08/data.parquet",
       "bytes": 73032336,
-      "sha256": null
+      "sha256": "922270fccfd53cf8e0d626674fba2f4934d6b26a5a847178a1e5e6d2076acd1e"
     },
     {
       "name": "prices_5m/year=2023/month=09/data.parquet",
       "bytes": 70974490,
-      "sha256": null
+      "sha256": "bd58cf8ae60afedca8061c66c31c05cb01720f23c41e7a3250ebdd2a0803c390"
     },
     {
       "name": "prices_5m/year=2023/month=10/data.parquet",
       "bytes": 74609159,
-      "sha256": null
+      "sha256": "f76dc2f67adf7dffe189f68ff31372407b6713013d12566fdb7fa445fdba7664"
     },
     {
       "name": "prices_5m/year=2023/month=11/data.parquet",
       "bytes": 66503918,
-      "sha256": null
+      "sha256": "2bf55189e5ee319ceb9890643b4776fcb8c849edda68d7b108c36b0c2c1fb1aa"
     },
     {
       "name": "prices_5m/year=2023/month=12/data.parquet",
       "bytes": 67816083,
-      "sha256": null
+      "sha256": "31c0cd8aefb9e6992704ba8b15f748afeec50f29fa270f999b6f8e9e0767442f"
     },
     {
       "name": "prices_5m/year=2024/month=01/data.parquet",
       "bytes": 71683617,
-      "sha256": null
+      "sha256": "70a40137ee4597f63d3d620dac7df906d5495c161b1989e90a8cd066c8e57866"
     },
     {
       "name": "prices_5m/year=2024/month=02/data.parquet",
       "bytes": 70663223,
-      "sha256": null
+      "sha256": "c9a5444575a33416f01c83d8c06dc7d4dc25b68d4bf514afdc4181dff136ac4d"
     },
     {
       "name": "prices_5m/year=2024/month=03/data.parquet",
       "bytes": 78094231,
-      "sha256": null
+      "sha256": "2c1c6b1f704eedd5e37caa160843ad0eb2d6f78eb3e2091072eca21072885dd9"
     },
     {
       "name": "prices_5m/year=2024/month=04/data.parquet",
       "bytes": 74976557,
-      "sha256": null
+      "sha256": "b1d26572f32e14c81702b338c22b99443c929672c4bb074d922f292ee2eb8659"
     },
     {
       "name": "prices_5m/year=2024/month=05/data.parquet",
       "bytes": 74826023,
-      "sha256": null
+      "sha256": "85b1a567c3fa8ecd2a20eba4bf952531c5dd32f5a77be777256992635f28d256"
     },
     {
       "name": "prices_5m/year=2024/month=06/data.parquet",
       "bytes": 73747412,
-      "sha256": null
+      "sha256": "292ce9026fd870f918ca5d8b5ef7183d05d65186836d735555a4caf27adc1042"
     },
     {
       "name": "prices_5m/year=2024/month=07/data.parquet",
       "bytes": 76643293,
-      "sha256": null
+      "sha256": "ae33b8747bfe80a058f94264019795a7454e985f8e11448fa60c30d4fe4d0771"
     },
     {
       "name": "prices_5m/year=2024/month=08/data.parquet",
       "bytes": 80582700,
-      "sha256": null
+      "sha256": "1021617220183a79984640add1847b8fca705e836888abcaa1401d9e09530d1d"
     },
     {
       "name": "prices_5m/year=2024/month=09/data.parquet",
       "bytes": 77513718,
-      "sha256": null
+      "sha256": "fa1a2ef8e6975cf1454445c85a9cc7884bd0e31ca239912eaee36a3325da98e0"
     },
     {
       "name": "prices_5m/year=2024/month=10/data.parquet",
       "bytes": 78943461,
-      "sha256": null
+      "sha256": "7a496112f3592dc72dcab358e92985433206d37f7d1d45e5a7174ea8223afd24"
     },
     {
       "name": "prices_5m/year=2024/month=11/data.parquet",
       "bytes": 73251099,
-      "sha256": null
+      "sha256": "11fe662240b32f4439005c86a6ddd7b8963673e70f0327b905ba7bcb1ce639cf"
     },
     {
       "name": "prices_5m/year=2024/month=12/data.parquet",
       "bytes": 65494879,
-      "sha256": null
+      "sha256": "762039eca6fd14a38585055c5e5a4334bd2f6d3e011d014bdfb5e765170842ec"
     },
     {
       "name": "prices_5m/year=2025/month=01/data.parquet",
       "bytes": 74245736,
-      "sha256": null
+      "sha256": "782f6be483895cc997a044570723cc88cb5ad492d7ab2fda29f807412387051d"
     },
     {
       "name": "prices_5m/year=2025/month=02/data.parquet",
       "bytes": 67621890,
-      "sha256": null
+      "sha256": "27c9b7f999d24973d54340cefda0fcfc30eca8302df73c0bede4455797868a30"
     },
     {
       "name": "prices_5m/year=2025/month=03/data.parquet",
       "bytes": 74469183,
-      "sha256": null
+      "sha256": "a80ec8314197eb1b8f0137a450ac3714cc7bd188f8494714e83b933a073359f6"
     },
     {
       "name": "prices_5m/year=2025/month=04/data.parquet",
       "bytes": 72861784,
-      "sha256": null
+      "sha256": "25a28f77b85d50d136476e15f88588fe411f7b2e278055297cdc585c05ae5c10"
     },
     {
       "name": "prices_5m/year=2025/month=05/data.parquet",
       "bytes": 77757707,
-      "sha256": null
+      "sha256": "7bb949a2089d39cdb686a2d5016d31dc1e983cdf41913b865bd1eb7df6aa4291"
     },
     {
       "name": "prices_5m/year=2025/month=06/data.parquet",
       "bytes": 76477473,
-      "sha256": null
+      "sha256": "97e2fac776802abe4cb0b64b2540578fc193ee5f113a26fb5a528b5bfc785d57"
     },
     {
       "name": "prices_5m/year=2025/month=07/data.parquet",
       "bytes": 85264979,
-      "sha256": null
+      "sha256": "1fe9b65719bb31a0e6c08c150ee99da0afdf8a5cdb2581781677d450707c44a5"
     },
     {
       "name": "prices_5m/year=2025/month=08/data.parquet",
       "bytes": 92400822,
-      "sha256": null
+      "sha256": "224f9268b23881ef6634975aa56bbcd4c2a36dd40168bf22ce5632b972255151"
     },
     {
       "name": "prices_5m/year=2025/month=09/data.parquet",
       "bytes": 83577533,
-      "sha256": null
+      "sha256": "2b1dcc57c95bee11bd4e3f81e28f64a887124116558aabaa44bb14725e62f767"
     },
     {
       "name": "prices_5m/year=2025/month=10/data.parquet",
       "bytes": 80518480,
-      "sha256": null
+      "sha256": "34937b89dfc6d0900219b3228f2a6fb014095225f93ea701adc427fd914175cd"
     },
     {
       "name": "prices_5m/year=2025/month=11/data.parquet",
       "bytes": 77888304,
-      "sha256": null
+      "sha256": "c8c544ff75123dbb39a295d0023484ba34bb72805514101bcfa18334c86e36e5"
     },
     {
       "name": "prices_5m/year=2025/month=12/data.parquet",
       "bytes": 86064099,
-      "sha256": null
+      "sha256": "530482a1d8cc73c25658916ada35d799981f18cdad841ebfa47b35bce26fc9c5"
     },
     {
       "name": "prices_5m/year=2026/month=01/data.parquet",
       "bytes": 88830695,
-      "sha256": null
+      "sha256": "31b78a5c24ab449b655875c3f29797964b6c6de01590afae05aa6e012d9935f1"
     },
     {
       "name": "prices_5m/year=2026/month=02/data.parquet",
       "bytes": 74966629,
-      "sha256": null
+      "sha256": "f7f8006ec107eaad7993c5666b1f0c14fa60e2fc81060eb70b78cd32649a103c"
     },
     {
       "name": "prices_5m/year=2026/month=03/data.parquet",
       "bytes": 78049087,
-      "sha256": null
+      "sha256": "8cd6f8b6885d62b1fa09604b60b83c0d79523493019569836fbc08bf91eaf5a2"
     },
     {
       "name": "prices_5m/year=2026/month=04/data.parquet",
       "bytes": 68814404,
-      "sha256": null
+      "sha256": "9b1065a926a07442692ffce0656e0ce22a526e8817205439edc380c7114ee75a"
     },
     {
       "name": "prices_5m/year=2026/month=05/data.parquet",
       "bytes": 67897064,
-      "sha256": null
+      "sha256": "ebc869e80ef0678e85a4edf3664981f9faf2134b44ae953b03214e85877b2b79"
     },
     {
       "name": "prices_5m/year=2026/month=06/data.parquet",
       "bytes": 70937660,
-      "sha256": null
+      "sha256": "fb4c1ca369b4e2ce44cf2e9fef6cfc6899ce0aeefdb4074b4ac7a9bc7e4a6c4d"
     },
     {
       "name": "prices_5m/year=2026/month=07/data.parquet",
       "bytes": 77611156,
-      "sha256": null
+      "sha256": "c31e8f9d878f78f5271baf8f6139407e89f637fa21600bac2cd3f47adcb07c94"
     },
     {
       "name": "prices_5m/year=2026/month=08/data.parquet",
       "bytes": 79079069,
-      "sha256": null
+      "sha256": "1af7d653794757f968ef6e2939549f44432d29fab0939db5e1a5517a14b1e900"
     },
     {
       "name": "prices_5m/year=2026/month=09/data.parquet",
       "bytes": 72383457,
-      "sha256": null
+      "sha256": "65558cf346f3fad0bbe195a5084245ca808ee596ac3527a996eebecb0e6b91d3"
     },
     {
       "name": "prices_5m/year=2026/month=10/data.parquet",
       "bytes": 44705704,
-      "sha256": null
+      "sha256": "a7e2dca0de789a76480d20a8c55d35a5d54a3159fb270c8e37cb9c0bfcc47886"
     }
   ]
 }
