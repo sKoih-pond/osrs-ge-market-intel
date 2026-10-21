@@ -1,0 +1,359 @@
+{
+  "dataset": "antonygarand/osrs-ge-5m",
+  "version": 1,
+  "licence": "CC BY-NC-SA 3.0",
+  "listed_at": "2026-10-21T15:50:00Z",
+  "note": "Sizes from Kaggle's file listing for version 1. A null sha256 is recorded by the first verified download (ge-intel history download) and then committed; after that a file that differs is refused.",
+  "files": [
+    {
+      "name": "README.md",
+      "bytes": 2865,
+      "sha256": "845e67bcdf4b4f7a957134bebd452fdb7850d8d62323a50ebc1f1a1c9e20db25"
+    },
+    {
+      "name": "items.parquet",
+      "bytes": 138740,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=03/data.parquet",
+      "bytes": 54977477,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=04/data.parquet",
+      "bytes": 67418671,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=05/data.parquet",
+      "bytes": 66472850,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=06/data.parquet",
+      "bytes": 63400138,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=07/data.parquet",
+      "bytes": 65149901,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=08/data.parquet",
+      "bytes": 67175292,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=09/data.parquet",
+      "bytes": 63200947,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=10/data.parquet",
+      "bytes": 63161252,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=11/data.parquet",
+      "bytes": 60808521,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2021/month=12/data.parquet",
+      "bytes": 58657676,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=01/data.parquet",
+      "bytes": 63609677,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=02/data.parquet",
+      "bytes": 55286244,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=03/data.parquet",
+      "bytes": 59544298,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=04/data.parquet",
+      "bytes": 60069015,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=05/data.parquet",
+      "bytes": 62874249,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=06/data.parquet",
+      "bytes": 60875933,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=07/data.parquet",
+      "bytes": 67179198,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=08/data.parquet",
+      "bytes": 67681580,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=09/data.parquet",
+      "bytes": 64102912,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=10/data.parquet",
+      "bytes": 66552862,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=11/data.parquet",
+      "bytes": 60787626,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2022/month=12/data.parquet",
+      "bytes": 68941811,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=01/data.parquet",
+      "bytes": 72004565,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=02/data.parquet",
+      "bytes": 66705032,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=03/data.parquet",
+      "bytes": 72916888,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=04/data.parquet",
+      "bytes": 69099076,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=05/data.parquet",
+      "bytes": 70578875,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=06/data.parquet",
+      "bytes": 70557575,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=07/data.parquet",
+      "bytes": 70579181,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=08/data.parquet",
+      "bytes": 73032336,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=09/data.parquet",
+      "bytes": 70974490,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=10/data.parquet",
+      "bytes": 74609159,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=11/data.parquet",
+      "bytes": 66503918,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2023/month=12/data.parquet",
+      "bytes": 67816083,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=01/data.parquet",
+      "bytes": 71683617,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=02/data.parquet",
+      "bytes": 70663223,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=03/data.parquet",
+      "bytes": 78094231,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=04/data.parquet",
+      "bytes": 74976557,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=05/data.parquet",
+      "bytes": 74826023,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=06/data.parquet",
+      "bytes": 73747412,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=07/data.parquet",
+      "bytes": 76643293,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=08/data.parquet",
+      "bytes": 80582700,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=09/data.parquet",
+      "bytes": 77513718,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=10/data.parquet",
+      "bytes": 78943461,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=11/data.parquet",
+      "bytes": 73251099,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2024/month=12/data.parquet",
+      "bytes": 65494879,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=01/data.parquet",
+      "bytes": 74245736,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=02/data.parquet",
+      "bytes": 67621890,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=03/data.parquet",
+      "bytes": 74469183,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=04/data.parquet",
+      "bytes": 72861784,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=05/data.parquet",
+      "bytes": 77757707,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=06/data.parquet",
+      "bytes": 76477473,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=07/data.parquet",
+      "bytes": 85264979,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=08/data.parquet",
+      "bytes": 92400822,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=09/data.parquet",
+      "bytes": 83577533,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=10/data.parquet",
+      "bytes": 80518480,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=11/data.parquet",
+      "bytes": 77888304,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2025/month=12/data.parquet",
+      "bytes": 86064099,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=01/data.parquet",
+      "bytes": 88830695,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=02/data.parquet",
+      "bytes": 74966629,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=03/data.parquet",
+      "bytes": 78049087,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=04/data.parquet",
+      "bytes": 68814404,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=05/data.parquet",
+      "bytes": 67897064,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=06/data.parquet",
+      "bytes": 70937660,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=07/data.parquet",
+      "bytes": 77611156,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=08/data.parquet",
+      "bytes": 79079069,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=09/data.parquet",
+      "bytes": 72383457,
+      "sha256": null
+    },
+    {
+      "name": "prices_5m/year=2026/month=10/data.parquet",
+      "bytes": 44705704,
+      "sha256": null
+    }
+  ]
+}

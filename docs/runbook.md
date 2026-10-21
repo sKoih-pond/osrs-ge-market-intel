@@ -6,9 +6,10 @@ How the hourly pipeline runs, what can go wrong, and what to do. Decisions behin
 
 | Workflow | When | Does |
 |---|---|---|
-| `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance (weekly, Monday 00:xx UTC) |
+| `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance and retention (weekly, Monday 00:xx UTC; see below) |
 | `watchdog` | `:13` and `:43` every hour | Reads the public `status.json` and the `hourly` workflow's state; opens one issue labelled `watchdog` when data is over 2 hours old or the schedule is off, and closes it on recovery |
 | `ci` | Every pull request and push to `main` | Lint, unit, contract and end-to-end tests, Wrangler dry run |
+| `history` | By hand | The M2 history job on a throwaway runner (ADR-0020): restores the raw Wiki responses from R2, builds `history/`, runs one step, saves new responses; see "History (M2)" |
 | `deploy-clock` | By hand | Deploys `ge-clock` (ADR-0017), the Cloudflare Worker whose Cron Triggers dispatch `hourly` (`:06`, `:26`) and `watchdog` (`:13`, `:43`) |
 
 Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ANALYTICS_TOKEN`; variables `CLOUDFLARE_ACCOUNT_ID`, `GE_DEPLOY_ENABLED` (`true` to deploy to `kohstack.tech/ge/`), `GE_GUARD_ACK_RUN_ID` (see below).
@@ -57,7 +58,48 @@ To replace it (on any suspicion of exposure, or if it is revoked): create a new 
 
 ## Pausing the pipeline
 
-Disable the `hourly` workflow in the Actions tab. The page keeps serving the last published data, and after 2 hours every page shows the staleness warning (computed in the browser, no deploy needed). The watchdog will open an issue; that is expected. Re-enable the workflow to resume: the first run catches up up to 8 hours of buckets, newest first, and later runs fill the rest.
+Disable the `hourly` workflow in the Actions tab. The page keeps serving the last published data, and after 2 hours every page shows the staleness warning (computed in the browser, no deploy needed). The watchdog will open an issue; that is expected. Re-enable the workflow to resume: the first run catches up up to 8 hours of buckets, newest first, and later runs fill the rest, up to 7 days back (ADR-0018).
+
+## A live gap older than 7 days
+
+The scheduler heals the live 5-minute series 7 days back and no further, so a longer outage leaves older buckets missing (the status page's completeness shows them). Filling them is a backfill, started by hand:
+
+1. List them: `ge-intel gaps --start <UTC ISO-8601>`.
+2. Disable the `hourly` workflow (one writer at a time).
+3. From the laptop, with the R2 keys in the environment: `ge-intel run ingest_5m --start <UTC> --end <UTC>`. Each run fetches at most 96 buckets, newest first; repeat until `gaps` reports none.
+4. Re-enable `hourly`.
+
+## Storage and retention (ADR-0019)
+
+Stored bytes are in every run's `guard` line (`storage_gb`). The weekly `maintain` task (Monday 00:xx UTC) logs, in its `task_finished` line and in `ops/task_runs`:
+- `tables`: each table's live files and bytes after compaction (from the Delta log; replaced files and checkpoints are not counted, so the bucket total is larger);
+- `retention`: for each rule, whether it is on (`applied`) and what is in scope: days, files, bytes and rows. While a rule is off, that is what it would remove.
+
+Expected around the first weekly runs: a step **up** after compaction (26 October: the compacted copies sit beside the hourly files) and the take-back a week later (2 November), when VACUUM deletes the replaced files.
+
+**Turning a rule on** (Sylvester's decision; ADR-0019 lists them):
+1. In a pull request that marks ADR-0019 Accepted (or Accepted in part), set `RETENTION` in `src/ge_intel/maintain.py` to `PROPOSED`, or to a `Retention` with only the chosen rules, and for rule D set `CHECKPOINT_EVERY = 10` in `src/ge_intel/lake.py`. Merge.
+2. The next Monday run applies the rules; its `retention` block shows rows deleted and files rewritten. The run after it logs that run's operations in `previous_window` (caps 500 Class A, 5,000 Class B).
+3. Storage falls at the following Monday's VACUUM, not at once.
+
+**Undoing:** set the rule back. Rows a rule deleted can still be read from the previous table version (Delta time travel) until the VACUUM a week later deletes the files; after that they are gone. The zstd rewrite of a month changes no rows.
+
+**After a pause of more than five weeks** with rule A on, older mart days keep their full rows until one wider run: disable `hourly`, then from the laptop with the R2 keys, `ge-intel run maintain --start <UTC: the oldest mart day still in full, plus 30 days> --end <the latest Monday>`, then re-enable `hourly`. The other rules catch up by themselves.
+
+## History (M2)
+
+The history job (`ge-intel history`, ADR-0018, `docs/plans/M2.md`) writes only the `history/` tables. Downloads, Wiki requests and the upload are Sylvester's to start, or an agent's he has asked to run it (ADR-0020); the note in the Wiki's Discord channel comes before the first Wiki request either way. It runs on a GitHub runner, so the MacBook needs no disk:
+
+1. Actions tab, `history`, Run workflow (an agent dispatches the same workflow through the API). Pick the step: `plan` (a dry run of everything; downloads nothing), `build` (download and build only), `check-1h`, `fill` (optional `limit`), `check-and-fill` (both, in one run) or `upload`. `dry_run` is on by default: turn it off to send the Wiki requests or write to R2. An agent reports each run's outcome and stops where a person would: a quarantined month, a revision, or the upload while ADR-0019's retention decision is open.
+2. Each run restores the raw Wiki responses from R2 (`history pull`), takes the Kaggle dump from the Actions cache (or downloads and caches it), builds `history/` on the runner, runs the step, and saves any new responses to `history/raw_wiki` (`history push`, also when the step stopped partway). Runs queue one at a time (`ge-intel-history-writer`) and never wait on `hourly`.
+3. After the first download, the run summary lists the Kaggle hashes it recorded: commit them in `src/ge_intel/sources/kaggle_osrs_ge_5m_v1.json` (a small PR).
+
+On a laptop instead: the same commands from the repository root, `history pull` first and `history push` last, with the R2 keys (and, for `push` and `upload`, the analytics token) in the environment. Files live under `GE_HISTORY_DIR` (default `data/history`, git-ignored); delete them after a run if disk is short, since everything is restored or rebuilt. Exit code 4: a step's inputs are not ready; the log says which.
+
+- **A month is quarantined** (`build` or `check-1h` reports it; details in `history/months.check_detail`): it stays out of R2. Look at the mismatching items before deciding on a fallback (plan, section 5.1).
+- **`RevisionFound`:** two different Wiki bodies are stored for one bucket (under `data/history/bronze/`, and in `history/raw_wiki` once pushed). Compare them and decide which stands; removing the other from `history/raw_wiki` is a delete in R2, so it is Sylvester's call. Then `build` again.
+- **`PinMismatch`:** a downloaded or local file differs from its pin. Do not edit the pin to make it pass; a changed file is a new source. On a runner, a cached dump that fails its pin also stops the run: delete the `kaggle-osrs-ge-5m-v1` entry (Actions tab, Caches) and run again.
+- **The download fails with HTTP 401 or 403** on a runner: Kaggle wants a login from that address. Add a Kaggle API token as repository secrets and basic authentication in `kaggle.download` (ADR-0020), or run `download` and `build` on the laptop.
 
 ## Deploying and rolling back the page
 

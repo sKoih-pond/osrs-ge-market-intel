@@ -19,7 +19,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 
 ### Ingestion (ADR-0005)
 
-5. **Gap-fill newest first, 96 buckets per run.** The newest buckets come first so the current hour publishes even mid-catch-up; older gaps follow on later runs. 96 buckets is about 100 seconds of requests at 1 per second and about 100 `PutObject` calls, inside the per-run caps. A one-hour skip (12 buckets) is always filled by the next run.
+5. **Gap-fill newest first, 96 buckets per run** (amended by ADR-0018: the scheduler looks back 7 days at most). The newest buckets come first so the current hour publishes even mid-catch-up; older gaps follow on later runs. 96 buckets is about 100 seconds of requests at 1 per second and about 100 `PutObject` calls, inside the per-run caps. A one-hour skip (12 buckets) is always filled by the next run.
 6. **Write order for crash safety.** Facts (`silver/prices_5m`, replace-where on exactly the fetched buckets) commit before the manifest. A crash between them leaves the bucket unrecorded, so the next run re-fetches it and the replace-where overwrites instead of duplicating. Tested.
 7. **Outage rule: 0.6 of the trailing 24-hour median item count**, with 15 minutes' grace for an empty bucket that may not be published yet. Derivation: `docs/methodology/outage_rule.md`.
 8. **Bronze keys include a content hash:** `bronze/wiki/<endpoint>/date=<day>/<bucket epoch>-<sha256[:12]>.json.gz`. Keys stay deterministic from (endpoint, bucket, content); a revised response becomes a second object instead of being silently lost, and writes are write-if-absent.
@@ -32,7 +32,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 12. **Prices round against the trader:** buy at the trailing instant-sell VWAP rounded up, sell at the trailing instant-buy VWAP rounded down, both to whole coins before tax (ADR-0007).
 13. **"Recent instant-sell volume" in the feasible quantity is the policy's entry window** (4 hours for casual-v1), the same window the buy offer competes in.
 14. **One tax implementation.** The mart calls `ge_tax_per_item`, a DuckDB macro generated from `ge_intel.tax`'s eras and cap by a dbt-duckdb plugin; a test checks the macro against the Python function on every edge case. (A Python UDF would have needed numpy.)
-15. **The paper record starts.** Every hour's full mart, including `is_idea` and `idea_rank`, is kept in `gold/market_snapshot` under `policy_id = casual-v1`; scoring each idea 24 hours later arrives with the M4 simulator.
+15. **The paper record starts.** Every hour's full mart, including `is_idea` and `idea_rank`, is kept in `gold/market_snapshot` under `policy_id = casual-v1`; scoring each idea 24 hours later arrives with the M4 simulator. (ADR-0019, Proposed: keep every idea row for ever and the full mart for 30 days.)
 
 15a. **Gold tables may gain columns.** The snapshot write uses delta-rs `schema_mode="merge"`, which adds nullable columns without changing the protocol (reader 1, writer 2, no features; tested). Removing or retyping a column still needs a new table or a rebuild.
 

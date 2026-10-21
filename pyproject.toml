@@ -45,7 +45,8 @@ addopts = "-q"
 [tool.ruff]
 line-length = 100
 target-version = "py312"
-extend-exclude = ["docs/research/probes"]
+# Fixtures are recorded data; the dump's own README must stay byte-identical to its pin.
+extend-exclude = ["docs/research/probes", "tests/fixtures"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

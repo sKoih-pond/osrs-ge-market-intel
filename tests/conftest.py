@@ -31,6 +31,7 @@ class FixtureTransport:
 
     def __init__(self, drop_buckets=()):
         self.buckets = _load("5m.json.gz")
+        self.hours = _load("1h.json.gz")
         self.latest = _load("latest.json.gz")
         self.mapping = _load("mapping.json.gz")
         self.drop = {str(int(t.timestamp())) for t in drop_buckets}
@@ -40,9 +41,10 @@ class FixtureTransport:
         self.urls.append(url)
         assert headers["Accept-Encoding"] == "gzip"
         path = url.split("/osrs", 1)[1]
-        if path.startswith("/5m?timestamp="):
+        if path.startswith(("/5m?timestamp=", "/1h?timestamp=")):
             ts = path.split("=", 1)[1]
-            payload = self.buckets.get(ts)
+            recorded = self.buckets if path.startswith("/5m") else self.hours
+            payload = recorded.get(ts)
             if payload is None or ts in self.drop:
                 payload = {"data": {}, "timestamp": int(ts)}
         elif path == "/latest":
