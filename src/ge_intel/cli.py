@@ -5,7 +5,7 @@
     ge-intel guard
     ge-intel gaps [--start <UTC>] [--end <UTC>]
     ge-intel tasks
-    ge-intel history plan|download|build|check-1h|fill|upload [--dry-run] [--limit N]
+    ge-intel history plan|download|build|check-1h|fill|upload|pull|push [--dry-run] [--limit N]
 
 Exit codes: 0 committed success; 1 a task failed; 2 R2 usage unreadable; 3 halted by the
 cost guard; 4 a history step's inputs are not ready. Logs are JSON lines on stdout.
@@ -28,7 +28,7 @@ from ge_intel.lake import Lake
 from ge_intel.timegrid import HOUR, floor, iso, parse_utc
 from ge_intel.wiki import WikiClient
 
-HISTORY_STEPS = ("plan", "download", "build", "check-1h", "fill", "upload")
+HISTORY_STEPS = ("plan", "download", "build", "check-1h", "fill", "upload", "pull", "push")
 
 
 def context(budget: RunBudget | None = None) -> Context:
@@ -79,8 +79,10 @@ def guard(ctx: Context) -> int:
 
 
 def run_history(step: str, dry_run: bool, limit: int | None) -> int:
-    """The M2 history job (ADR-0018). Runs on the laptop, by hand: downloads, Wiki requests
-    and the upload are Sylvester's to start (docs/kickoff/delegation_plan.md)."""
+    """The M2 history job (ADR-0018), run only on request: downloads, Wiki requests and the
+    upload are Sylvester's to start, or an agent's he has asked (docs/kickoff/delegation_plan.md,
+    ADR-0020). It runs on a throwaway GitHub runner (`history` workflow) or the laptop; `pull`
+    and `push` keep its raw Wiki responses in `history/raw_wiki` between runs."""
     h = history.History(
         Path(os.environ.get("GE_HISTORY_DIR", "data/history")),
         client=WikiClient() if step in ("check-1h", "fill") else None,
@@ -96,9 +98,10 @@ def run_history(step: str, dry_run: bool, limit: int | None) -> int:
             report = history.check_1h(h, dry_run=dry_run)
         elif step == "fill":
             report = history.fill(h, dry_run=dry_run, limit=limit)
-        else:
-            budget = RunBudget()
-            target = Lake.from_env(budget)
+        elif step == "pull":
+            report = history.pull_raw(h, Lake.from_env(RunBudget()))
+        else:  # push or upload: writes to the lake, behind the cost guard on R2
+            target = Lake.from_env(RunBudget())
             stored_bytes = None
             if target.root.startswith("s3://"):
                 account = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
@@ -112,7 +115,10 @@ def run_history(step: str, dry_run: bool, limit: int | None) -> int:
                     tasks.log("history", step=step, halted=list(verdict.reasons))
                     return 3
                 stored_bytes = usage.storage_bytes
-            report = history.upload(h, target, dry_run=dry_run, stored_bytes=stored_bytes)
+            if step == "push":
+                report = history.push_raw(h, target, dry_run=dry_run)
+            else:
+                report = history.upload(h, target, dry_run=dry_run, stored_bytes=stored_bytes)
     except history.NotReady as exc:
         tasks.log("history", step=step, not_ready=str(exc))
         return 4
@@ -140,7 +146,9 @@ def main(argv: list[str] | None = None) -> int:
     gaps.add_argument("--start", type=parse_utc, help="default: the scheduler's gap-fill window")
     gaps.add_argument("--end", type=parse_utc)
     sub.add_parser("tasks", help="print the task registry as JSON")
-    hist = sub.add_parser("history", help="M2 history job: the Kaggle dump, fills, upload")
+    hist = sub.add_parser(
+        "history", help="M2 history job: the Kaggle dump, fills, upload; pull/push raw responses"
+    )
     hist.add_argument("step", choices=HISTORY_STEPS)
     hist.add_argument("--dry-run", action="store_true", help="report only; send and write nothing")
     hist.add_argument("--limit", type=int, help="fill: at most this many buckets")

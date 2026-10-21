@@ -1,8 +1,9 @@
 """Delta tables on R2 (or a local folder), written only through delta-rs (ADR-0003, spike S1).
 
-Rules carried from S1: one commit per table per run, a checkpoint after every commit,
-`aws_conditional_put: etag` set explicitly, tables created by delta-rs with the protocol
-baseline reader 1 / writer 2 and no table features or properties.
+Rules carried from S1: one commit per table per run, a checkpoint after every commit (rule 2,
+which also allows one every 10 or so; see `CHECKPOINT_EVERY`), `aws_conditional_put: etag` set
+explicitly, tables created by delta-rs with the protocol baseline reader 1 / writer 2 and no
+table features or properties.
 """
 
 from __future__ import annotations
@@ -19,6 +20,11 @@ from deltalake import CommitProperties, DeltaTable, WriterProperties, write_delt
 from ge_intel.objects import LocalStore, ObjectStore, R2Store
 
 BUCKET = "ge-intel-lake"
+ZSTD = WriterProperties(compression="ZSTD")  # about a fifth smaller than the default snappy
+# A checkpoint lists every live file of the table, and delta keeps log files 30 days, so one
+# per commit is a large share of the lake's growth (ADR-0019). ADR-0019 proposes 10, which
+# S1 rule 2 allows; until it is accepted, every commit.
+CHECKPOINT_EVERY = 1
 
 
 def r2_storage_options(account_id: str, key_id: str, secret: str) -> dict[str, str]:
@@ -37,6 +43,7 @@ class Lake:
     store: ObjectStore
     storage_options: dict[str, str] | None = None
     commits: list[dict] = field(default_factory=list)  # (table, version) written this run
+    checkpoint_every: int = CHECKPOINT_EVERY
 
     @classmethod
     def from_env(cls, budget) -> Lake:
@@ -100,11 +107,35 @@ class Lake:
             commit_properties=CommitProperties(custom_metadata=dict(metadata or {})),
         )
         dt = DeltaTable(self.uri(name), storage_options=self.storage_options)
-        dt.create_checkpoint()
         version = dt.version()
+        if version % self.checkpoint_every == 0:
+            dt.create_checkpoint()
         rows = getattr(data, "num_rows", None)  # unknown for a stream
         self.commits.append({"table": name, "version": version, "rows": rows})
         return version
+
+    def delete(
+        self, name: str, predicate: str, *, metadata: Mapping[str, str] | None = None
+    ) -> dict:
+        """One commit removing the rows that match `predicate` (checkpointed as `write` is);
+        delta-rs's metrics back. A predicate on partition columns only removes whole files and
+        rewrites none; any other rewrites each file it touches without the matching rows.
+        Nothing matching, no commit.
+        """
+        dt = self.table(name)
+        if dt is None:
+            return {"num_deleted_rows": 0, "num_added_files": 0, "num_removed_files": 0}
+        before = dt.version()
+        metrics = dt.delete(
+            predicate, commit_properties=CommitProperties(custom_metadata=dict(metadata or {}))
+        )
+        dt = DeltaTable(self.uri(name), storage_options=self.storage_options)
+        if dt.version() != before:
+            if dt.version() % self.checkpoint_every == 0:
+                dt.create_checkpoint()
+            deleted = metrics["num_deleted_rows"]
+            self.commits.append({"table": name, "version": dt.version(), "rows_deleted": deleted})
+        return metrics
 
 
 def content_hash(table: pa.Table | None, sort_keys: list[str]) -> str:

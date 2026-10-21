@@ -4,8 +4,9 @@ Every file is pinned by its listed size and SHA-256 in `sources/kaggle_osrs_ge_5
 download streams to `<file>.part`, is checked against the pin and only then takes its real
 name, so a file under its real name is always a verified one. A pin without a SHA-256 is
 recorded by the first verified download (trust on first download; the month checks against
-the Wiki's `/1h` are what establish trust in the content) and must then be committed, after
-which a different file is refused. Files are fetched one at a time with a pause between them,
+the Wiki's `/1h` are what establish trust in the content), and again by any run that finds that
+download kept, as a runner's cache restores it (ADR-0020), until it is committed, after which a
+different file is refused. Files are fetched one at a time with a pause between them,
 never in parallel, and a re-run skips files already verified.
 """
 
@@ -129,12 +130,15 @@ def download(
     """Fetch every pinned file not yet verified under `dest`. Dry run: report, send nothing."""
     pins = pins if pins is not None else load_pins(pins_path)
     have, todo = [], []
+    recorded: dict[str, str] = {}
     for pin in pins:
         path = local_path(dest, pin.name)
         if path.exists():
             try:
-                check(path, pin)
+                sha = check(path, pin)
                 have.append(pin)
+                if pin.sha256 is None:  # a first download kept, e.g. in a runner's cache
+                    recorded[pin.name] = sha
                 continue
             except PinMismatch:
                 if dry_run:
@@ -151,10 +155,9 @@ def download(
         "unpinned_hashes": sum(p.sha256 is None for p in pins),
         "requests": len(todo),
     }
-    if dry_run or not todo:
+    if dry_run:
         return report
     headers = {"User-Agent": USER_AGENT}
-    recorded: dict[str, str] = {}
     for i, pin in enumerate(todo):
         if i:
             sleep(pause_s)

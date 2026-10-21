@@ -33,10 +33,9 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
-from deltalake import WriterProperties
 
 from ge_intel import ingest, kaggle, wiki
-from ge_intel.lake import Lake
+from ge_intel.lake import ZSTD, Lake, in_list
 from ge_intel.objects import LocalStore
 from ge_intel.reference import regimes
 from ge_intel.timegrid import FIVE_MIN, HOUR, floor, grid, iso, parse_utc
@@ -51,6 +50,10 @@ PRICES_5M = "history/prices_5m"
 BUCKETS_5M = "history/buckets_5m"
 MONTHS = "history/months"
 TABLES = (PRICES_1H, PRICES_5M, BUCKETS_5M, MONTHS)
+# The raw Wiki responses this job fetched, kept in R2 so the job can run on a throwaway runner
+# (ADR-0020). An input, not a derived table: `build` never writes it and `upload` never copies
+# it; `push_raw` adds new responses and `pull_raw` restores them to disk byte for byte.
+RAW = "history/raw_wiki"
 
 SOURCE_API = "wiki_api"
 CHECK_HOURS = 2
@@ -70,7 +73,6 @@ DUMP_COLUMNS = (
     "lowPriceVolume",
 )
 MONTH_FILE = re.compile(r"prices_5m/year=(\d{4})/month=(\d{2})/data\.parquet")
-ZSTD = WriterProperties(compression="ZSTD")  # about a fifth smaller than the default snappy
 MEMORY_LIMIT = "2GB"
 
 # Planning figures for a dry run before the dump is on disk: the dump's README row count and
@@ -129,6 +131,17 @@ MONTHS_SCHEMA = pa.schema(
         ("check_hours", pa.string()),  # JSON list of hour starts
         ("check_detail", pa.string()),  # JSON, one entry per checked hour
         ("status", pa.string()),  # built | validated | quarantined
+    ]
+)
+
+
+RAW_SCHEMA = pa.schema(
+    [
+        ("key", pa.string()),  # the file's path under the history directory
+        ("endpoint", pa.string()),  # 5m | 1h
+        ("sha256", pa.string()),  # of the response body
+        ("body_gz", pa.binary()),  # the file itself: the body, gzipped with mtime 0
+        ("meta", pa.string()),  # the request metadata file beside it, verbatim
     ]
 )
 
@@ -350,6 +363,74 @@ def fetch(h: History, endpoint: str, start: datetime) -> None:
             "fetched-at": iso(resp.fetched_at),
         },
     )
+
+
+def raw_files(h: History) -> dict[str, Path]:
+    """Every Wiki response this job kept on disk, by its path under the history directory."""
+    found = sorted((h.root / "bronze" / "wiki").glob("*/date=*/*.json.gz"))
+    return {str(path.relative_to(h.root)): path for path in found}
+
+
+def push_raw(h: History, target: Lake, *, dry_run: bool = False) -> dict:
+    """Copy the responses on disk that `target` does not hold yet into `history/raw_wiki`, in
+    one commit (replace-where on their keys, so a re-run converges). Nothing new, no commit."""
+    remote = target.read(RAW, columns=["key"])
+    held = set(remote.column("key").to_pylist()) if remote is not None else set()
+    local = raw_files(h)
+    rows = []
+    for key in sorted(set(local) - held):
+        path = local[key]
+        body_gz = path.read_bytes()
+        meta = path.with_name(path.name + ".meta.json")
+        rows.append(
+            {
+                "key": key,
+                "endpoint": path.parts[-3],
+                "sha256": hashlib.sha256(gzip.decompress(body_gz)).hexdigest(),
+                "body_gz": body_gz,
+                "meta": meta.read_text() if meta.exists() else None,
+            }
+        )
+    report = {
+        "on_disk": len(local),
+        "in_r2": len(held),
+        "new": len(rows),
+        "bytes": sum(len(r["body_gz"]) for r in rows),
+    }
+    if dry_run or not rows:
+        return report
+    target.write(
+        RAW,
+        pa.Table.from_pylist(rows, schema=RAW_SCHEMA),
+        predicate=in_list("key", [r["key"] for r in rows]),
+        partition_by=["endpoint"],
+        metadata={"task": "history_push_raw"},
+    )
+    return report
+
+
+def pull_raw(h: History, source: Lake) -> dict:
+    """Restore the responses in `history/raw_wiki` to disk. A file already on disk must be
+    byte-identical; a missing one is written with its metadata beside it, as `fetch` wrote it."""
+    table = source.read(RAW)
+    if table is None:
+        return {"in_r2": 0, "restored": 0}
+    restored = 0
+    for row in table.to_pylist():
+        key = row["key"]
+        if not key.startswith("bronze/wiki/") or ".." in key.split("/"):
+            raise ValueError(f"{RAW} holds an unexpected key {key!r}")
+        if hashlib.sha256(gzip.decompress(row["body_gz"])).hexdigest() != row["sha256"]:
+            raise RevisionFound(f"{key} in {RAW} does not hash to its recorded SHA-256")
+        path = h.root / key
+        if path.exists():
+            if path.read_bytes() != row["body_gz"]:
+                raise RevisionFound(f"{path} differs from its copy in {RAW}")
+            continue
+        meta = json.loads(row["meta"]) if row["meta"] else {}
+        h.raw.put_if_absent(key, row["body_gz"], "application/gzip", meta)
+        restored += 1
+    return {"in_r2": table.num_rows, "restored": restored}
 
 
 def verified_months(h: History) -> dict[str, tuple[Path, str]]:
