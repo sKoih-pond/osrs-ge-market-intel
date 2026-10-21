@@ -33,3 +33,19 @@ def test_a_delete_on_the_partition_column_rewrites_no_file(tmp_path):
     assert lake.commits[-1] == {"table": "silver/t", "version": 1, "rows_deleted": 1}
     assert lake.delete("silver/t", "d < '2026-10-21'")["num_deleted_rows"] == 0
     assert lake.table("silver/t").version() == 1  # nothing matched: no commit
+
+
+def test_checkpoints_every_nth_version_when_asked(tmp_path):
+    def checkpoints(lake):
+        log = tmp_path / lake.root.rsplit("/", 1)[-1] / "silver" / "t" / "_delta_log"
+        return sorted(int(f.name.split(".")[0]) for f in log.glob("*.checkpoint.parquet"))
+
+    every = Lake(root=str(tmp_path / "every"), store=LocalStore(tmp_path))
+    tenth = Lake(root=str(tmp_path / "tenth"), store=LocalStore(tmp_path), checkpoint_every=10)
+    assert every.checkpoint_every == 1  # S1 rule 2 until ADR-0019 is accepted
+    for lake in (every, tenth):
+        for i in range(12):
+            lake.write("silver/t", pa.table({"x": [i]}), mode="append")
+    assert checkpoints(every) == list(range(12))
+    assert checkpoints(tenth) == [0, 10]
+    assert sorted(tenth.read("silver/t").column("x").to_pylist()) == list(range(12))

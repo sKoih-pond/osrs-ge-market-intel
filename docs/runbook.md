@@ -6,7 +6,7 @@ How the hourly pipeline runs, what can go wrong, and what to do. Decisions behin
 
 | Workflow | When | Does |
 |---|---|---|
-| `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance (weekly, Monday 00:xx UTC) |
+| `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance and retention (weekly, Monday 00:xx UTC; see below) |
 | `watchdog` | `:13` and `:43` every hour | Reads the public `status.json` and the `hourly` workflow's state; opens one issue labelled `watchdog` when data is over 2 hours old or the schedule is off, and closes it on recovery |
 | `ci` | Every pull request and push to `main` | Lint, unit, contract and end-to-end tests, Wrangler dry run |
 | `deploy-clock` | By hand | Deploys `ge-clock` (ADR-0017), the Cloudflare Worker whose Cron Triggers dispatch `hourly` (`:06`, `:26`) and `watchdog` (`:13`, `:43`) |
@@ -67,6 +67,23 @@ The scheduler heals the live 5-minute series 7 days back and no further, so a lo
 2. Disable the `hourly` workflow (one writer at a time).
 3. From the laptop, with the R2 keys in the environment: `ge-intel run ingest_5m --start <UTC> --end <UTC>`. Each run fetches at most 96 buckets, newest first; repeat until `gaps` reports none.
 4. Re-enable `hourly`.
+
+## Storage and retention (ADR-0019)
+
+Stored bytes are in every run's `guard` line (`storage_gb`). The weekly `maintain` task (Monday 00:xx UTC) logs, in its `task_finished` line and in `ops/task_runs`:
+- `tables`: each table's live files and bytes after compaction (from the Delta log; replaced files and checkpoints are not counted, so the bucket total is larger);
+- `retention`: for each rule, whether it is on (`applied`) and what is in scope: days, files, bytes and rows. While a rule is off, that is what it would remove.
+
+Expected around the first weekly runs: a step **up** after compaction (26 October: the compacted copies sit beside the hourly files) and the take-back a week later (2 November), when VACUUM deletes the replaced files.
+
+**Turning a rule on** (Sylvester's decision; ADR-0019 lists them):
+1. In a pull request that marks ADR-0019 Accepted (or Accepted in part), set `RETENTION` in `src/ge_intel/maintain.py` to `PROPOSED`, or to a `Retention` with only the chosen rules, and for rule D set `CHECKPOINT_EVERY = 10` in `src/ge_intel/lake.py`. Merge.
+2. The next Monday run applies the rules; its `retention` block shows rows deleted and files rewritten. The run after it logs that run's operations in `previous_window` (caps 500 Class A, 5,000 Class B).
+3. Storage falls at the following Monday's VACUUM, not at once.
+
+**Undoing:** set the rule back. Rows a rule deleted can still be read from the previous table version (Delta time travel) until the VACUUM a week later deletes the files; after that they are gone. The zstd rewrite of a month changes no rows.
+
+**After a pause of more than five weeks** with rule A on, older mart days keep their full rows until one wider run: disable `hourly`, then from the laptop with the R2 keys, `ge-intel run maintain --start <UTC: the oldest mart day still in full, plus 30 days> --end <the latest Monday>`, then re-enable `hourly`. The other rules catch up by themselves.
 
 ## History (M2)
 
