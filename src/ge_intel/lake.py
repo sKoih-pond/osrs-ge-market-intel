@@ -19,6 +19,7 @@ from deltalake import CommitProperties, DeltaTable, WriterProperties, write_delt
 from ge_intel.objects import LocalStore, ObjectStore, R2Store
 
 BUCKET = "ge-intel-lake"
+ZSTD = WriterProperties(compression="ZSTD")  # about a fifth smaller than the default snappy
 
 
 def r2_storage_options(account_id: str, key_id: str, secret: str) -> dict[str, str]:
@@ -105,6 +106,28 @@ class Lake:
         rows = getattr(data, "num_rows", None)  # unknown for a stream
         self.commits.append({"table": name, "version": version, "rows": rows})
         return version
+
+    def delete(
+        self, name: str, predicate: str, *, metadata: Mapping[str, str] | None = None
+    ) -> dict:
+        """One commit removing the rows that match `predicate`, then a checkpoint; delta-rs's
+        metrics back. A predicate on partition columns only removes whole files and rewrites
+        none; any other rewrites each file it touches without the matching rows. Nothing
+        matching, no commit.
+        """
+        dt = self.table(name)
+        if dt is None:
+            return {"num_deleted_rows": 0, "num_added_files": 0, "num_removed_files": 0}
+        before = dt.version()
+        metrics = dt.delete(
+            predicate, commit_properties=CommitProperties(custom_metadata=dict(metadata or {}))
+        )
+        dt = DeltaTable(self.uri(name), storage_options=self.storage_options)
+        if dt.version() != before:
+            dt.create_checkpoint()
+            deleted = metrics["num_deleted_rows"]
+            self.commits.append({"table": name, "version": dt.version(), "rows_deleted": deleted})
+        return metrics
 
 
 def content_hash(table: pa.Table | None, sort_keys: list[str]) -> str:

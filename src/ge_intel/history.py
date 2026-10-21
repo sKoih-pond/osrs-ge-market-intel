@@ -33,10 +33,9 @@ from pathlib import Path
 import duckdb
 import pyarrow as pa
 import pyarrow.compute as pc
-from deltalake import WriterProperties
 
 from ge_intel import ingest, kaggle, wiki
-from ge_intel.lake import Lake
+from ge_intel.lake import ZSTD, Lake
 from ge_intel.objects import LocalStore
 from ge_intel.reference import regimes
 from ge_intel.timegrid import FIVE_MIN, HOUR, floor, grid, iso, parse_utc
@@ -70,7 +69,6 @@ DUMP_COLUMNS = (
     "lowPriceVolume",
 )
 MONTH_FILE = re.compile(r"prices_5m/year=(\d{4})/month=(\d{2})/data\.parquet")
-ZSTD = WriterProperties(compression="ZSTD")  # about a fifth smaller than the default snappy
 MEMORY_LIMIT = "2GB"
 
 # Planning figures for a dry run before the dump is on disk: the dump's README row count and

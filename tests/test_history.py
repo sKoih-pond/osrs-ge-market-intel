@@ -246,6 +246,7 @@ def test_history_and_live_never_share_a_table(h):
     assert all(name.startswith("history/") for name in history.TABLES)
     assert not live_writes & set(history.TABLES)
     assert not set(maintain.TABLES) & set(history.TABLES)  # weekly VACUUM is a write too
+    assert not set(maintain.RETAINED) & set(history.TABLES)  # so are retention deletes
 
 
 def test_plan_reports_a_full_run_without_running_it(h):
