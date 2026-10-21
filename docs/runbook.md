@@ -9,6 +9,7 @@ How the hourly pipeline runs, what can go wrong, and what to do. Decisions behin
 | `hourly` | `:06` and `:26` every hour, or by hand | Cost guard, then every task in `ge_intel.tasks.REGISTRY` for the newest closed hour: `/mapping` (daily), `/5m` gap-fill, `/latest`, dbt mart, publish, duplicate check (daily), maintenance and retention (weekly, Monday 00:xx UTC; see below) |
 | `watchdog` | `:13` and `:43` every hour | Reads the public `status.json` and the `hourly` workflow's state; opens one issue labelled `watchdog` when data is over 2 hours old or the schedule is off, and closes it on recovery |
 | `ci` | Every pull request and push to `main` | Lint, unit, contract and end-to-end tests, Wrangler dry run |
+| `history` | By hand | The M2 history job on a throwaway runner (ADR-0020): restores the raw Wiki responses from R2, builds `history/`, runs one step, saves new responses; see "History (M2)" |
 | `deploy-clock` | By hand | Deploys `ge-clock` (ADR-0017), the Cloudflare Worker whose Cron Triggers dispatch `hourly` (`:06`, `:26`) and `watchdog` (`:13`, `:43`) |
 
 Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ANALYTICS_TOKEN`; variables `CLOUDFLARE_ACCOUNT_ID`, `GE_DEPLOY_ENABLED` (`true` to deploy to `kohstack.tech/ge/`), `GE_GUARD_ACK_RUN_ID` (see below).
@@ -87,11 +88,18 @@ Expected around the first weekly runs: a step **up** after compaction (26 Octobe
 
 ## History (M2)
 
-The history job (`ge-intel history`, ADR-0018, `docs/plans/M2.md`) runs on the laptop, by hand, and writes only the `history/` tables. Downloads, Wiki requests and the upload are Sylvester's to start. Order: `plan`, `download`, `build`, `check-1h`, `fill`, `upload`; each takes `--dry-run`. Files live under `GE_HISTORY_DIR` (default `data/history`, git-ignored). Exit code 4: a step's inputs are not ready; the log says which.
+The history job (`ge-intel history`, ADR-0018, `docs/plans/M2.md`) writes only the `history/` tables. Downloads, Wiki requests and the upload are Sylvester's to start. It runs on a GitHub runner (ADR-0020), so the MacBook needs no disk:
+
+1. Actions tab, `history`, Run workflow. Pick the step: `plan` (a dry run of everything; downloads nothing), `build` (download and build only), `check-1h`, `fill` (optional `limit`) or `upload`. `dry_run` is on by default: turn it off to send the Wiki requests or write to R2.
+2. Each run restores the raw Wiki responses from R2 (`history pull`), takes the Kaggle dump from the Actions cache (or downloads and caches it), builds `history/` on the runner, runs the step, and saves any new responses to `history/raw_wiki` (`history push`, also when the step stopped partway). Runs queue one at a time (`ge-intel-history-writer`) and never wait on `hourly`.
+3. After the first download, the run summary lists the Kaggle hashes it recorded: commit them in `src/ge_intel/sources/kaggle_osrs_ge_5m_v1.json` (a small PR).
+
+On a laptop instead: the same commands from the repository root, `history pull` first and `history push` last, with the R2 keys (and, for `push` and `upload`, the analytics token) in the environment. Files live under `GE_HISTORY_DIR` (default `data/history`, git-ignored); delete them after a run if disk is short, since everything is restored or rebuilt. Exit code 4: a step's inputs are not ready; the log says which.
 
 - **A month is quarantined** (`build` or `check-1h` reports it; details in `history/months.check_detail`): it stays out of R2. Look at the mismatching items before deciding on a fallback (plan, section 5.1).
-- **`RevisionFound`:** two different Wiki bodies are stored for one bucket under `data/history/bronze/`. Compare them; delete the one that should not stand, then `build` again.
-- **`PinMismatch`:** a downloaded or local file differs from its pin. Do not edit the pin to make it pass; a changed file is a new source.
+- **`RevisionFound`:** two different Wiki bodies are stored for one bucket (under `data/history/bronze/`, and in `history/raw_wiki` once pushed). Compare them and decide which stands; removing the other from `history/raw_wiki` is a delete in R2, so it is Sylvester's call. Then `build` again.
+- **`PinMismatch`:** a downloaded or local file differs from its pin. Do not edit the pin to make it pass; a changed file is a new source. On a runner, a cached dump that fails its pin also stops the run: delete the `kaggle-osrs-ge-5m-v1` entry (Actions tab, Caches) and run again.
+- **The download fails with HTTP 401 or 403** on a runner: Kaggle wants a login from that address. Add a Kaggle API token as repository secrets and basic authentication in `kaggle.download` (ADR-0020), or run `download` and `build` on the laptop.
 
 ## Deploying and rolling back the page
 

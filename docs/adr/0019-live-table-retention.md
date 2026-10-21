@@ -79,7 +79,7 @@ A1 and A2 both satisfy AT7, which scores published ideas only. A1 also keeps the
 
 **B. `silver/latest_snapshots`:** B0 keep everything (2.9 MB a day); **B1** keep 30 days (about 0.1 GB steady); B2 keep 7 days. The table feeds only the staleness input of the current hour; 30 days matches bronze, so the hour's raw `/latest` and its typed rows expire together.
 
-**C. `silver/prices_5m`:** C0 as written; **C1** rewrite each closed month in zstd, each day sorted by item (25% smaller, same rows); C2 later, move 5-minute months older than a year to local disk and keep their hourly rollup in R2, as the dump is kept (`docs/plans/M2.md` section 7.5). The 5-minute series itself is kept for ever in R2 under C1.
+**C. `silver/prices_5m`:** C0 as written; **C1** rewrite each closed month in zstd, each day sorted by item (25% smaller, same rows); C2 later, move 5-minute months older than a year out of R2 to a free private host (a private Hugging Face dataset, ADR-0020) and keep their hourly rollup in R2 (`docs/plans/M2.md` section 7.5). The 5-minute series itself is kept for ever in R2 under C1.
 
 **D. Checkpoints:** D0 one per commit (today); **D1** one every 10th table version, which S1 rule 2 already allows ("or about 10"); D2 a 7-day `delta.logRetentionDuration`, which needs a table property against the S1 baseline of none.
 

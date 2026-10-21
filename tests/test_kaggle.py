@@ -81,6 +81,28 @@ def test_download_verifies_records_first_hashes_and_resumes(tmp_path, pins_file)
     assert "%2F" in fake.urls[1]  # nested names are URL-encoded
 
 
+def test_a_kept_first_download_records_its_hash_without_fetching(tmp_path, pins_file):
+    """A runner restores the dump from its cache before the hashes are committed (ADR-0020):
+    the run still records them, so its summary shows what to commit."""
+    bodies = {"prices_5m/year=2021/month=03/data.parquet": PARQUET}
+    pins = pins_for(pins_file, bodies, pinned=set())
+    path = tmp_path / "v1" / "prices_5m/year=2021/month=03/data.parquet"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(PARQUET)
+    fake = Fake(bodies)
+
+    assert (
+        kaggle.download(tmp_path / "v1", dry_run=True, pins=pins, pins_path=pins_file)[
+            "unpinned_hashes"
+        ]
+        == 1
+    )
+    assert kaggle.load_pins(pins_file)[0].sha256 is None  # a dry run records nothing
+    out = kaggle.download(tmp_path / "v1", pins=pins, pins_path=pins_file, fetch=fake)
+    assert (out["downloaded"], out["pins_recorded"]) == (0, 1) and fake.urls == []
+    assert kaggle.load_pins(pins_file)[0].sha256 == hashlib.sha256(PARQUET).hexdigest()
+
+
 def test_a_file_that_differs_from_its_pin_is_refused(tmp_path, pins_file):
     name = "prices_5m/year=2021/month=03/data.parquet"
     pins = pins_for(pins_file, {name: PARQUET}, pinned={name})

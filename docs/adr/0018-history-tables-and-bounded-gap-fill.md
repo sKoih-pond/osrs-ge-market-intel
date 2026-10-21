@@ -4,6 +4,8 @@
 - **Date:** 2026-10-22
 - **Decided by:** Agent, within the M2 planning scope set by Sylvester; measured where noted. Amends ADR-0005 and ADR-0016 (each carries a note).
 
+> **Where it runs, amended by ADR-0020 (Proposed, 2026-10-21):** the history job runs on a hand-started GitHub runner (`history` workflow, its own `ge-intel-history-writer` group) instead of the laptop, which stays possible. Decision 4 holds on the runner's disk: each run rebuilds every `history/` table from the pinned dump and the raw responses; the raw responses persist between runs in `history/raw_wiki` in R2, an input that `build` never writes and `upload` never copies.
+
 ## Context
 
 M2 loads history from the Kaggle dump `antonygarand/osrs-ge-5m` v1 (ADR-0005, amended), fills its gaps from the Wiki API and joins it to the live series M1 has recorded since 18 October 2026 23:00 UTC. Two designs that look natural are traps.

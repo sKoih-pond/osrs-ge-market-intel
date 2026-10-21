@@ -1,0 +1,120 @@
+name: history
+
+# The M2 history job (ADR-0018) on a throwaway runner instead of the laptop (ADR-0020). Started
+# by hand only: the Kaggle download, the Wiki requests and the upload are Sylvester's to start.
+# Each run restores the job's raw Wiki responses from R2, takes the pinned Kaggle dump (from
+# the Actions cache after the first run), rebuilds history/ on the runner's disk, runs the
+# chosen step and saves any new responses back to R2. Runbook: "History (M2)".
+on:
+  workflow_dispatch:
+    inputs:
+      step:
+        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill or upload"
+        type: choice
+        options: [plan, build, check-1h, fill, upload]
+        default: plan
+      dry_run:
+        description: "check-1h, fill, upload: report only, send and write nothing"
+        type: boolean
+        default: true
+      limit:
+        description: "fill: at most this many buckets (empty: all)"
+        required: false
+
+permissions:
+  contents: read
+
+# history/ has one writer: this job, one run at a time (ADR-0018). It never writes the live
+# tables, so it stays out of the hourly workflow's group.
+concurrency:
+  group: ge-intel-history-writer
+  cancel-in-progress: false
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The dump (4.8 GB), the local lake (about 2 GB) and DuckDB's spill (up to 2 GB) need
+      # about 9 GB; removing SDKs this job never uses leaves a wide margin over the 14 GB listed.
+      - name: Free runner disk
+        run: |
+          df -h /
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked
+      # Dataset version 1 never changes, and `download` checks every restored file against its
+      # pin, so a fixed key is safe.
+      - id: dump
+        if: inputs.step != 'plan'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/history/kaggle
+          key: kaggle-osrs-ge-5m-v1
+      - name: Restore raw Wiki responses from R2
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: uv run ge-intel history pull
+      - name: Plan
+        if: inputs.step == 'plan'
+        run: uv run ge-intel history plan
+      - name: Download the Kaggle dump
+        if: inputs.step != 'plan'
+        run: uv run ge-intel history download
+      # Cached as soon as it is verified, so a later failure does not cost a second download.
+      - if: inputs.step != 'plan' && steps.dump.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: data/history/kaggle
+          key: kaggle-osrs-ge-5m-v1
+      - name: Build history/ on the runner
+        if: inputs.step != 'plan'
+        run: uv run ge-intel history build
+      # First downloads record the dump's file hashes in the pins file; they must be committed
+      # (a small PR), so they are shown here and in the run summary.
+      - name: Kaggle hashes recorded by this run
+        if: always() && inputs.step != 'plan'
+        run: |
+          if ! git diff --quiet -- src/ge_intel/sources/; then
+            git diff -- src/ge_intel/sources/
+            {
+              echo "### Kaggle hashes recorded by this run: commit them"
+              echo '```diff'
+              git diff -- src/ge_intel/sources/
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Wiki requests
+        if: inputs.step == 'check-1h' || inputs.step == 'fill'
+        env:
+          STEP: ${{ inputs.step }}
+          DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+          LIMIT: ${{ inputs.limit }}
+        run: uv run ge-intel history "$STEP" $DRY ${LIMIT:+--limit "$LIMIT"}
+      # Runs even if the requests stopped partway, so nothing fetched is fetched twice.
+      - name: Save new raw Wiki responses to R2
+        if: always() && (inputs.step == 'check-1h' || inputs.step == 'fill') && !inputs.dry_run
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
+        run: uv run ge-intel history push
+      - name: Upload validated months to R2
+        if: inputs.step == 'upload'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
+          DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
+        run: uv run ge-intel history upload $DRY

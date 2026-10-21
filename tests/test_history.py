@@ -19,7 +19,7 @@ import pyarrow.parquet as pq
 import pytest
 from conftest import FIXTURE_NOW, Clock, FixtureTransport
 
-from ge_intel import history, ingest, kaggle, maintain, tasks, wiki
+from ge_intel import cli, history, ingest, kaggle, maintain, tasks, wiki
 from ge_intel.lake import Lake, content_hash
 from ge_intel.objects import LocalStore
 from ge_intel.timegrid import HOUR, grid
@@ -247,6 +247,64 @@ def test_history_and_live_never_share_a_table(h):
     assert not live_writes & set(history.TABLES)
     assert not set(maintain.TABLES) & set(history.TABLES)  # weekly VACUUM is a write too
     assert not set(maintain.RETAINED) & set(history.TABLES)  # so are retention deletes
+    # The raw responses' table is history's too, but an input: never rebuilt or uploaded.
+    assert history.RAW.startswith("history/") and history.RAW not in history.TABLES
+    assert history.RAW not in live_writes | set(maintain.TABLES) | set(maintain.RETAINED)
+
+
+def test_raw_responses_survive_a_throwaway_runner(h, tmp_path):
+    history.build(h)
+    history.check_1h(h)
+    history.fill(h)
+    local = history.raw_files(h)
+    assert {key.split("/")[2] for key in local} == {"5m", "1h"}
+    r2 = local_lake(tmp_path / "r2")
+
+    assert history.push_raw(h, r2, dry_run=True)["new"] == len(local)
+    assert r2.table(history.RAW) is None  # a dry run writes nothing
+    assert history.push_raw(h, r2)["new"] == len(local)
+    version = r2.table(history.RAW).version()
+    assert history.push_raw(h, r2) == {
+        "on_disk": len(local),
+        "in_r2": len(local),
+        "new": 0,
+        "bytes": 0,
+    }
+    assert r2.table(history.RAW).version() == version  # nothing new, no commit
+
+    runner = history.History(tmp_path / "runner", pins=h.pins, live_start=LIVE)
+    assert history.pull_raw(runner, r2) == {"in_r2": len(local), "restored": len(local)}
+    for key, path in local.items():
+        copy = runner.root / key
+        assert copy.read_bytes() == path.read_bytes()
+        meta = path.with_name(path.name + ".meta.json")
+        assert copy.with_name(copy.name + ".meta.json").read_text() == meta.read_text()
+    assert history.pull_raw(runner, r2)["restored"] == 0
+    for endpoint in ("5m", "1h"):  # what build and the step reruns read back
+        assert history.stored(runner, endpoint) == history.stored(h, endpoint)
+
+    bad = r2.read(history.RAW).slice(0, 1).to_pylist()[0]
+    bad["sha256"] = "0" * 64
+    r2.write(
+        history.RAW,
+        pa.Table.from_pylist([bad], schema=history.RAW_SCHEMA),
+        predicate=f"key = '{bad['key']}'",
+        partition_by=["endpoint"],
+    )
+    with pytest.raises(history.RevisionFound, match="recorded SHA-256"):
+        history.pull_raw(history.History(tmp_path / "other", pins=h.pins), r2)
+
+
+def test_the_cli_pushes_and_pulls_raw_responses(h, tmp_path, monkeypatch):
+    history.build(h)
+    history.fill(h)
+    monkeypatch.setenv("GE_LAKE_ROOT", str(tmp_path / "r2"))  # local: no cost guard needed
+    monkeypatch.setenv("GE_HISTORY_DIR", str(h.root))
+    assert cli.main(["history", "push"]) == 0
+    monkeypatch.setenv("GE_HISTORY_DIR", str(tmp_path / "runner"))
+    assert cli.main(["history", "pull"]) == 0
+    runner = history.History(tmp_path / "runner", pins=h.pins)
+    assert history.raw_files(runner).keys() == history.raw_files(h).keys()
 
 
 def test_plan_reports_a_full_run_without_running_it(h):
