@@ -233,11 +233,25 @@ def test_upload_copies_validated_months_and_meets_live_at_the_seam(h, tmp_path):
     assert dry["months_uploaded"] == 1 and dry["commits"] == 4 and dry["bytes"]["total"] > 0
     assert target.table(history.PRICES_1H) is None
     history.upload(h, target)
-    history.upload(h, target)  # replace-where per month: a re-run converges
+    assert hashes(target) == hashes(h.lake)
+    versions = {name: target.table(name).version() for name in history.TABLES}
+
+    # Nothing vacuums history/, so a re-run must not rewrite what is already there.
+    again = history.upload(h, target)
+    assert (again["months_uploaded"], again["months_already_in_r2"], again["commits"]) == (0, 1, 0)
+    assert {name: target.table(name).version() for name in history.TABLES} == versions
+
+    # A month whose row in R2 differs (here: held back by an earlier upload) is written.
+    rows = target.read(history.MONTHS).to_pylist()
+    for row in rows:
+        row["status"] = "quarantined"
+    target.write(history.MONTHS, pa.Table.from_pylist(rows, schema=history.MONTHS_SCHEMA))
+    redo = history.upload(h, target)
+    assert (redo["months_uploaded"], redo["commits"]) == (1, 4)
     assert hashes(target) == hashes(h.lake)
 
-    with pytest.raises(history.NotReady, match="5 GB"):
-        history.upload(h, target, dry_run=True, stored_bytes=5 * 10**9)
+    with pytest.raises(history.NotReady, match="5 GB"):  # counted before anything is in R2
+        history.upload(h, None, dry_run=True, stored_bytes=5 * 10**9)
     late = pa.table({"bucket_start": pa.array([LIVE + timedelta(minutes=5)], type=history.TS)})
     target.write(ingest.BUCKETS, late)  # live data that starts after history ends: a hole
     with pytest.raises(history.NotReady, match="live data starts"):
