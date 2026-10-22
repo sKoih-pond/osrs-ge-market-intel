@@ -161,10 +161,12 @@ def test_a_mismatch_quarantines_the_month_and_keeps_it_out_of_r2(h, tmp_path):
     payload = h.client.transport.hours[str(int(datetime.fromisoformat(hours[0]).timestamp()))]
     item = next(iter(payload["data"].values()))
     item["highPriceVolume"] = item.get("highPriceVolume", 0) + 1
-    assert history.check_1h(h)["build"]["months_quarantined"] == 1
+    built = history.check_1h(h)["build"]
+    assert built["months_quarantined"] == 1
     detail = json.loads(h.lake.read(history.MONTHS).to_pylist()[0]["check_detail"])
     bad = [d for d in detail if not d["ok"]]
     assert len(bad) == 1 and bad[0]["volume_mismatches"]
+    assert built["quarantined"] == {"2026-10": detail}  # the evidence, in the run's log
 
     target = local_lake(tmp_path / "r2")
     report = history.upload(h, target)

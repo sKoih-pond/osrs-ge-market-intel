@@ -755,6 +755,12 @@ def build(h: History, *, dry_run: bool = False) -> dict:
         "months_validated": statuses.count("validated"),
         "months_quarantined": statuses.count("quarantined"),
         "months_unchecked": statuses.count("built"),
+        # The evidence a person needs to decide on a quarantined month (plan, section 5.1).
+        "quarantined": {
+            r["bucket_month"]: json.loads(r["check_detail"])
+            for r in month_rows
+            if r["status"] == "quarantined"
+        },
     }
 
 
