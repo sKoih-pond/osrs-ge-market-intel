@@ -109,6 +109,12 @@ def test_dump_timestamps_are_bucket_numbers_and_widths_are_unified(tmp_path):
     assert first[2] == 152.0 and second[2] is None and second[4] == 1.5
     assert history.price_type(con, old) == "integer"
     assert history.price_type(con, new) == "decimal"
+    # Stored as floating point but rounded to whole coins (the dump's newest months): the
+    # whole-coin tolerance applies.
+    whole = tmp_path / "prices_5m/year=2026/month=09/data.parquet"
+    rounded = {"avgLowPrice": 150.0, "avgHighPrice": None, "timestamp": 5_964_000}
+    write_month(whole, {**base, **rounded}, pa.float64(), pa.int64())
+    assert history.price_type(con, whole) == "integer"
     assert history.check_month(con, "2021-03", old, LIVE)["rows"] == 1
 
     seconds = tmp_path / "seconds.parquet"  # what the file would hold if the README were right

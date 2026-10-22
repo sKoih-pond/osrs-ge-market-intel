@@ -253,16 +253,23 @@ def dump_sql(paths: list[Path]) -> str:
 
 
 def price_type(con, path: Path) -> str:
-    """'integer' or 'decimal' prices; refuses a file without the Wiki's field names."""
+    """'integer' or 'decimal': how finely the source rounded the month's 5-minute averages,
+    which sets the `/1h` check's tolerance. Read from the values, not only the column type: the
+    dump stores its newest months as floating point, and a month whose prices are all whole
+    coins is rounded like an integer month (found by the first live check, 22 October 2026).
+    Refuses a file without the Wiki's field names."""
     types = dict(con.execute("select name, type from parquet_schema(?)", [str(path)]).fetchall())
     missing = [c for c in DUMP_COLUMNS if c not in types]
     if missing:
         raise wiki.ContractError(f"{path}: missing columns {missing}")
-    return (
-        "integer"
-        if {types["avgHighPrice"], types["avgLowPrice"]} & {"INT32", "INT64"}
-        else "decimal"
-    )
+    if {types["avgHighPrice"], types["avgLowPrice"]} & {"INT32", "INT64"}:
+        return "integer"
+    fractional = con.execute(
+        "select count(*) from read_parquet(?) "
+        "where avgHighPrice <> round(avgHighPrice) or avgLowPrice <> round(avgLowPrice)",
+        [str(path)],
+    ).fetchone()[0]
+    return "decimal" if fractional else "integer"
 
 
 CHECKS = (
