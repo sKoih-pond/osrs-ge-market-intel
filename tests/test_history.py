@@ -6,6 +6,7 @@ history ending at 22:00 that leaves a 27-bucket seam and three gaps, one of whic
 returns empty (an outage). `/1h` answers come from real recorded responses.
 """
 
+import dataclasses
 import gzip
 import hashlib
 import json
@@ -179,6 +180,48 @@ def test_a_mismatch_quarantines_the_month_and_keeps_it_out_of_r2(h, tmp_path):
     assert report["months_held_back"] == ["2026-10"] and report["months_uploaded"] == 0
     assert target.table(history.PRICES_1H) is None and target.table(history.PRICES_5M) is None
     assert target.read(history.MONTHS).to_pylist()[0]["status"] == "quarantined"
+
+
+def test_a_repaired_month_takes_1h_rows_where_the_dump_disagrees(h, monkeypatch):
+    """Plan 5.1's fallback for 2026-01, on the fixture month made hourly-only: every hour is
+    checked, and an hour that disagrees with `/1h` takes `/1h`'s rows."""
+    monkeypatch.setattr(history, "REPAIR_FROM_1H", frozenset({"2026-10"}))
+    with pytest.raises(ValueError, match="hourly-only"):
+        history.build(h)  # the 5-minute window has no reference to repair from
+    h = dataclasses.replace(h, window_5m_start=LIVE)
+    history.build(h)
+    history.fill(h)
+    month = h.lake.read(history.MONTHS).to_pylist()[0]
+    assert month["status"] == "built" and len(json.loads(month["check_hours"])) == 24
+    assert history.check_1h(h, dry_run=True)["requests"] == 24
+
+    tampered = datetime(2026, 10, 19, 5, tzinfo=UTC)
+    payload = h.client.transport.hours[str(int(tampered.timestamp()))]
+    dropped = int(min(payload["data"], key=int))
+    del payload["data"][str(dropped)]  # the dump holds an item /1h does not, as in 2026-01
+    built = history.check_1h(h)["build"]
+
+    outage_hour = OUTAGE.replace(minute=0)  # a bucket missing from the dump and from /5m
+    assert built["repaired"] == {
+        "2026-10": {
+            "status": "validated",
+            "hours": 24,
+            "replaced": [history.iso(tampered), history.iso(outage_hour)],
+            "api_empty": 0,
+        }
+    }
+    hourly = h.lake.read(history.PRICES_1H).to_pylist()
+    at = [r for r in hourly if r["bucket_start"] == tampered]
+    api = wiki.parse_bucket(payload, tampered)
+    assert sorted((r["item_id"], r["high_volume"]) for r in at) == sorted(
+        (r["item_id"], r["high_volume"]) for r in api
+    )
+    assert dropped not in {r["item_id"] for r in at}
+    assert {r["source"] for r in at} == {history.SOURCE_API}
+    kept = [r for r in hourly if r["bucket_start"] == tampered - HOUR]
+    assert kept and {r["source"] for r in kept} == {kaggle.SOURCE}  # agreed: the dump stays
+    assert h.lake.read(history.MONTHS).to_pylist()[0]["status"] == "validated"
+    assert history.check_1h(h)["requests"] == 0
 
 
 def test_fill_fetches_the_seam_first_then_gaps_and_records_outages(h):
