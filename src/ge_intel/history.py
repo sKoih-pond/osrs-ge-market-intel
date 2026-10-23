@@ -26,6 +26,7 @@ import json
 import re
 import shutil
 from collections import deque
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -37,7 +38,7 @@ import pyarrow.compute as pc
 from ge_intel import ingest, kaggle, wiki
 from ge_intel.lake import ZSTD, Lake, in_list
 from ge_intel.objects import LocalStore
-from ge_intel.reference import regimes
+from ge_intel.reference import regime_at, regimes
 from ge_intel.timegrid import FIVE_MIN, HOUR, floor, grid, iso, parse_utc
 
 # The first bucket of `silver/wiki_5m_buckets` (M1 go-live); history ends where live begins.
@@ -57,6 +58,12 @@ RAW = "history/raw_wiki"
 
 SOURCE_API = "wiki_api"
 CHECK_HOURS = 2
+# Quarantined months repaired from `/1h` (plan, section 5.1): every hour of the month is checked,
+# and an hour where the dump disagrees takes `/1h`'s rows, the independent reference (ADR-0005).
+# 2026-01: the dump held items `/1h` did not in one checked hour (first live check, 22 October
+# 2026); Sylvester chose the repair on 23 October. Hourly-only months: the 5-minute window has
+# no reference to repair from.
+REPAIR_FROM_1H = frozenset({"2026-01"})
 REL_TOL = 0.001
 # A checked price passes within the larger of 0.1% and three roundings: the source's 5-minute
 # averages (to whole coins in months the dump stores as integers, else to 0.01 GP), this job's
@@ -556,6 +563,40 @@ def compare_hour(rollup: list[dict], api: list[dict], abs_tol: float) -> dict:
     }
 
 
+def repair_hours(month: str, first: datetime, live_start: datetime) -> list[datetime]:
+    """Every hour of a repaired month that history covers."""
+    m0, m1 = month_bounds(month)
+    return grid(max(m0, floor(first, HOUR)), min(m1, live_start), HOUR)
+
+
+def repair_from_1h(
+    hourly: pa.Table, month: str, responses: dict[datetime, Stored], abs_tol: float
+) -> tuple[pa.Table, list[dict]]:
+    """A month's hourly rows with each hour that disagrees with `/1h` replaced by `/1h`'s rows.
+    An hour `/1h` answered empty (an outage on its side) keeps the dump's rows. The detail lists
+    every replaced or empty hour with its comparison, as evidence."""
+    replaced, rows, detail = [], [], []
+    for hour, resp in sorted(responses.items()):
+        api = wiki.parse_bucket(resp.payload, hour)
+        if not api:
+            detail.append({"hour": iso(hour), "raw_key": resp.key, "api_empty": True})
+            continue
+        mine = hourly.filter(pc.equal(hourly["bucket_start"], pa.scalar(hour, TS)))
+        result = compare_hour(mine.to_pylist(), api, abs_tol)
+        if result["ok"]:
+            continue
+        replaced.append(hour)
+        detail.append({"hour": iso(hour), "raw_key": resp.key, "replaced": True, **result})
+        regime = regime_at("measurement", hour)
+        extra = {"bucket_start": hour, "bucket_month": month, "regime_id": regime}
+        rows += [{**r, **extra, "source": SOURCE_API} for r in api]
+    if not replaced:
+        return hourly, detail
+    kept = hourly.filter(pc.invert(pc.is_in(hourly["bucket_start"], pa.array(replaced, TS))))
+    out = pa.concat_tables([kept, pa.Table.from_pylist(rows, schema=PRICES_1H_SCHEMA)])
+    return out.sort_by([("item_id", "ascending"), ("bucket_start", "ascending")]), detail
+
+
 FILLS_SCHEMA = pa.schema(
     [
         ("bucket_epoch", pa.int64()),
@@ -579,10 +620,17 @@ def _fills_table(fills: list[Stored]) -> pa.Table:
 
 
 def build_month(
-    h: History, con, month: str, path: Path, sha: str, fills: list[Stored]
+    h: History,
+    con,
+    month: str,
+    path: Path,
+    sha: str,
+    fills: list[Stored],
+    repair: Callable[[pa.Table], pa.Table] | None = None,
 ) -> tuple[pa.Table, int]:
-    """Write one month's hourly rows, and its 5-minute rows inside the R2 window. Returns the
-    hourly rows (for the month's checks) and the number of 5-minute rows written."""
+    """Write one month's hourly rows (through `repair` first, if given), and its 5-minute rows
+    inside the R2 window. Returns the hourly rows (for the month's checks) and the number of
+    5-minute rows written."""
     con.register("fills_5m", _fills_table(fills))
     con.execute(
         f"""
@@ -614,6 +662,8 @@ def build_month(
     hourly = conform(hourly, PRICES_1H_SCHEMA)
     if hourly.column("regime_id").null_count:
         raise LookupError(f"{month}: hours outside every measurement regime")
+    if repair is not None:
+        hourly = repair(hourly)
     meta = {"task": "history_build", "month": month, "source_sha256": sha}
     write(
         h.lake,
@@ -699,23 +749,41 @@ def build(h: History, *, dry_run: bool = False) -> dict:
 
     month_rows, rows_5m = [], 0
     for month, (path, sha) in months.items():
-        hours = check_hours(month, sha, complete.get(month, []))
-        hourly, n5 = build_month(h, con, month, path, sha, fills_by_month.get(month, []))
-        rows_5m += n5
-        detail = []
-        for hour in hours:
-            if hour in checks:
-                rollup = hourly.filter(pc.equal(hourly["bucket_start"], pa.scalar(hour, TS)))
-                api = wiki.parse_bucket(checks[hour].payload, hour)
-                result = compare_hour(rollup.to_pylist(), api, ABS_TOL[prices[month]])
-                detail.append({"hour": iso(hour), "raw_key": checks[hour].key, **result})
-        if not hours:
-            status = "quarantined"  # no complete dump hour to check
-        elif len(detail) < len(hours):
-            status = "built"
-        else:
-            status = "validated" if all(d["ok"] for d in detail) else "quarantined"
         m0, m1 = month_bounds(month)
+        detail: list[dict] = []
+        repair = None
+        if month in REPAIR_FROM_1H:
+            if max(m0, h.window_5m_start) < min(m1, h.live_start):
+                raise ValueError(f"{month}: only hourly-only months can be repaired from /1h")
+            hours = repair_hours(month, first, h.live_start)
+            if all(x in checks for x in hours):
+
+                def repair(t, month=month, hours=hours, detail=detail):
+                    t, found = repair_from_1h(
+                        t, month, {x: checks[x] for x in hours}, ABS_TOL[prices[month]]
+                    )
+                    detail.extend(found)
+                    return t
+
+        else:
+            hours = check_hours(month, sha, complete.get(month, []))
+        hourly, n5 = build_month(h, con, month, path, sha, fills_by_month.get(month, []), repair)
+        rows_5m += n5
+        if month in REPAIR_FROM_1H:
+            status = "validated" if repair is not None else "built"  # agrees with /1h by now
+        else:
+            for hour in hours:
+                if hour in checks:
+                    rollup = hourly.filter(pc.equal(hourly["bucket_start"], pa.scalar(hour, TS)))
+                    api = wiki.parse_bucket(checks[hour].payload, hour)
+                    result = compare_hour(rollup.to_pylist(), api, ABS_TOL[prices[month]])
+                    detail.append({"hour": iso(hour), "raw_key": checks[hour].key, **result})
+            if not hours:
+                status = "quarantined"  # no complete dump hour to check
+            elif len(detail) < len(hours):
+                status = "built"
+            else:
+                status = "validated" if all(d["ok"] for d in detail) else "quarantined"
         n = per_month.get(month, {"recorded": 0, "outage": 0, "fill": 0})
         month_rows.append(
             {
@@ -767,6 +835,17 @@ def build(h: History, *, dry_run: bool = False) -> dict:
             r["bucket_month"]: json.loads(r["check_detail"])
             for r in month_rows
             if r["status"] == "quarantined"
+        },
+        # What each repair from /1h changed: hours checked, replaced, and answered empty.
+        "repaired": {
+            r["bucket_month"]: {
+                "status": r["status"],
+                "hours": len(json.loads(r["check_hours"])),
+                "replaced": [d["hour"] for d in json.loads(r["check_detail"]) if d.get("replaced")],
+                "api_empty": sum(bool(d.get("api_empty")) for d in json.loads(r["check_detail"])),
+            }
+            for r in month_rows
+            if r["bucket_month"] in REPAIR_FROM_1H
         },
     }
 
