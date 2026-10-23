@@ -25,7 +25,7 @@ from ge_intel import cost_guard, history, ingest, kaggle, ops, tasks
 from ge_intel.cost_guard import RunBudget
 from ge_intel.ingest import Context
 from ge_intel.lake import Lake
-from ge_intel.timegrid import HOUR, floor, iso, parse_utc
+from ge_intel.timegrid import iso, parse_utc
 from ge_intel.wiki import WikiClient
 
 HISTORY_STEPS = ("plan", "download", "build", "check-1h", "fill", "upload", "pull", "push")
@@ -173,7 +173,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.cmd == "guard":
         return guard(ctx)
     if args.cmd == "gaps":
-        end = args.end or floor(datetime.now(UTC), HOUR)
+        end = args.end or tasks.newest_closed_hour(datetime.now(UTC))
         start = args.start or tasks.interval_for(ctx, tasks.REGISTRY["ingest_5m"], end)[0]
         missing = ingest.missing_buckets(ctx, start, end)
         print(
@@ -206,7 +206,7 @@ def main(argv: list[str] | None = None) -> int:
         verdict = guard(ctx)
         if verdict:
             return verdict
-    end = args.end or floor(datetime.now(UTC), HOUR)
+    end = args.end or tasks.newest_closed_hour(datetime.now(UTC))
     only = set(args.only.split(",")) if args.only else None
     return tasks.hourly(ctx, end, force=args.force, only=only)
 

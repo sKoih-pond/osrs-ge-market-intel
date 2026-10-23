@@ -16,7 +16,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
-from ge_intel import ingest, maintain, ops, publish
+from ge_intel import ingest, maintain, ops, publish, wiki
 from ge_intel.build import build_snapshot
 from ge_intel.ingest import Context
 from ge_intel.timegrid import DAY, HOUR, floor, iso
@@ -111,6 +111,14 @@ def run_task(
                 "orchestrator": ops.orchestrator(),
             }
         )
+
+
+def newest_closed_hour(now: datetime) -> datetime:
+    """The end of the newest hour whose last 5-minute bucket counts as published, by the same
+    rule the gap-fill uses (`wiki.bucket_is_closed`). A run that starts in the first minute of
+    an hour (a GitHub schedule fired 33 minutes late, at 17:00:16 on 23 October 2026) works on
+    the hour before instead of failing on an hour it cannot complete yet."""
+    return floor(now - wiki.PUBLICATION_DELAY, HOUR)
 
 
 def interval_for(ctx: Context, task: Task, end_hour: datetime) -> tuple[datetime, datetime]:

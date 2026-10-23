@@ -23,7 +23,7 @@ Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_A
 1. Open the run's log. Each line is JSON; find `"status": "failed"` and its `error`.
 2. Nothing needs undoing. Every task is idempotent and catch-up comes from storage, so the next scheduled run retries and fills any gap. Re-run by hand from the Actions tab (`hourly`, Run workflow) if you do not want to wait.
 3. If the same task fails twice in a row, it is not transient. Common causes:
-   - `UpstreamIncomplete`: the hour's 5-minute buckets are not all recorded, usually because the Wiki API failed for those buckets. Check `prices.runescape.wiki` responds, then re-run.
+   - `UpstreamIncomplete`: the hour's 5-minute buckets are not all recorded, usually because the Wiki API failed for those buckets. Check `prices.runescape.wiki` responds, then re-run. A run that starts in the first minute of an hour works on the hour before (`tasks.newest_closed_hour`), so a late GitHub schedule no longer fails this way; before 23 October 2026 it could.
    - `ContractViolation`: the published files would break the v1 contract. Nothing was deployed; the page keeps serving the last good data. Fix the code and add a test.
    - `ContractError` from the Wiki client: the API's response shape changed. Do not loosen the parser blindly; read what changed first.
 
