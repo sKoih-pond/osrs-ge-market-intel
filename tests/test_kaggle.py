@@ -22,6 +22,7 @@ def test_shipped_pins_cover_version_1_and_pin_the_real_readme():
     assert months[0] == "prices_5m/year=2021/month=03/data.parquet"
     assert months[-1] == "prices_5m/year=2026/month=10/data.parquet"
     assert sum(p.bytes for p in pins) == 4_802_290_041
+    assert all(p.sha256 for p in pins)  # recorded by the first download (21 Oct 2026), committed
     readme = next(p for p in pins if p.name == "README.md")
     assert kaggle.check(README, readme) == readme.sha256  # the README as downloaded
 

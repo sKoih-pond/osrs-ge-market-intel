@@ -253,16 +253,23 @@ def dump_sql(paths: list[Path]) -> str:
 
 
 def price_type(con, path: Path) -> str:
-    """'integer' or 'decimal' prices; refuses a file without the Wiki's field names."""
+    """'integer' or 'decimal': how finely the source rounded the month's 5-minute averages,
+    which sets the `/1h` check's tolerance. Read from the values, not only the column type: the
+    dump stores its newest months as floating point, and a month whose prices are all whole
+    coins is rounded like an integer month (found by the first live check, 22 October 2026).
+    Refuses a file without the Wiki's field names."""
     types = dict(con.execute("select name, type from parquet_schema(?)", [str(path)]).fetchall())
     missing = [c for c in DUMP_COLUMNS if c not in types]
     if missing:
         raise wiki.ContractError(f"{path}: missing columns {missing}")
-    return (
-        "integer"
-        if {types["avgHighPrice"], types["avgLowPrice"]} & {"INT32", "INT64"}
-        else "decimal"
-    )
+    if {types["avgHighPrice"], types["avgLowPrice"]} & {"INT32", "INT64"}:
+        return "integer"
+    fractional = con.execute(
+        "select count(*) from read_parquet(?) "
+        "where avgHighPrice <> round(avgHighPrice) or avgLowPrice <> round(avgLowPrice)",
+        [str(path)],
+    ).fetchone()[0]
+    return "decimal" if fractional else "integer"
 
 
 CHECKS = (
@@ -755,6 +762,12 @@ def build(h: History, *, dry_run: bool = False) -> dict:
         "months_validated": statuses.count("validated"),
         "months_quarantined": statuses.count("quarantined"),
         "months_unchecked": statuses.count("built"),
+        # The evidence a person needs to decide on a quarantined month (plan, section 5.1).
+        "quarantined": {
+            r["bucket_month"]: json.loads(r["check_detail"])
+            for r in month_rows
+            if r["status"] == "quarantined"
+        },
     }
 
 
@@ -831,29 +844,45 @@ def live_first_bucket(target: Lake) -> datetime | None:
     return pc.min(table.column(0)).as_py() if table is not None and table.num_rows else None
 
 
+def uploaded_months(target: Lake | None) -> dict[str, dict]:
+    """The target's `history/months` rows by month: what earlier uploads wrote."""
+    table = target.read(MONTHS) if target is not None else None
+    return {r["bucket_month"]: r for r in table.to_pylist()} if table is not None else {}
+
+
 def upload(
     h: History, target: Lake | None, *, dry_run: bool = False, stored_bytes: int | None = None
 ) -> dict:
     """Copy validated months to `target` (R2): one commit per month for each price table, then
     the manifest and the months table, so a reader never sees a month before its rows.
 
+    A month whose row in the target's months table equals the local one (same dump file,
+    fills, checks and status) is already there and is not written again: nothing vacuums
+    `history/`, so a rewrite would leave the replaced files in R2 for good. With nothing new,
+    an upload commits nothing.
+
     `stored_bytes` is the bucket's current storage (from the cost guard); an upload that
     would take it past the M2 limit of 5 GB is refused. Against a lake that already has live
     data, the live manifest must start exactly at `live_start`, so history and live meet with
     neither overlap nor hole."""
     months = built_months(h)
-    ok = sorted(m["bucket_month"] for m in months if m["status"] == "validated")
+    done = uploaded_months(target)
+    validated = sorted(m["bucket_month"] for m in months if m["status"] == "validated")
     held = sorted(m["bucket_month"] for m in months if m["status"] != "validated")
+    same = [m["bucket_month"] for m in months if done.get(m["bucket_month"]) == m]
+    ok = [m for m in validated if m not in same]
     ok_5m = [m for m in ok if month_bounds(m)[1] > h.window_5m_start]
+    tables = 0 if len(same) == len(months) == len(done) else 2  # the manifest and months
     sizes = {
         PRICES_1H: _bytes(h, PRICES_1H, lambda a: a["partition.bucket_month"] in ok),
         PRICES_5M: _bytes(h, PRICES_5M, lambda a: month_of(a["partition.bucket_date"]) in ok_5m),
-        BUCKETS_5M: _bytes(h, BUCKETS_5M, lambda a: True),
-        MONTHS: _bytes(h, MONTHS, lambda a: True),
+        BUCKETS_5M: _bytes(h, BUCKETS_5M, lambda a: True) if tables else 0,
+        MONTHS: _bytes(h, MONTHS, lambda a: True) if tables else 0,
     }
-    commits = len(ok) + len(ok_5m) + 2
+    commits = len(ok) + len(ok_5m) + tables
     report = {
         "months_uploaded": len(ok),
+        "months_already_in_r2": len([m for m in validated if m in same]),
         "months_held_back": held,
         "bytes": {**sizes, "total": sum(sizes.values())},
         "commits": commits,
@@ -905,9 +934,10 @@ def upload(
             partition_by=["bucket_date"],
             metadata={**meta, "month": month},
         )
-    buckets = conform(h.lake.read(BUCKETS_5M), BUCKETS_SCHEMA)
-    write(target, BUCKETS_5M, buckets, partition_by=["bucket_month"], metadata=meta)
-    write(target, MONTHS, conform(h.lake.read(MONTHS), MONTHS_SCHEMA), metadata=meta)
+    if tables:
+        buckets = conform(h.lake.read(BUCKETS_5M), BUCKETS_SCHEMA)
+        write(target, BUCKETS_5M, buckets, partition_by=["bucket_month"], metadata=meta)
+        write(target, MONTHS, conform(h.lake.read(MONTHS), MONTHS_SCHEMA), metadata=meta)
     return report
 
 

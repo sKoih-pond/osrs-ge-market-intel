@@ -109,6 +109,12 @@ def test_dump_timestamps_are_bucket_numbers_and_widths_are_unified(tmp_path):
     assert first[2] == 152.0 and second[2] is None and second[4] == 1.5
     assert history.price_type(con, old) == "integer"
     assert history.price_type(con, new) == "decimal"
+    # Stored as floating point but rounded to whole coins (the dump's newest months): the
+    # whole-coin tolerance applies.
+    whole = tmp_path / "prices_5m/year=2026/month=09/data.parquet"
+    rounded = {"avgLowPrice": 150.0, "avgHighPrice": None, "timestamp": 5_964_000}
+    write_month(whole, {**base, **rounded}, pa.float64(), pa.int64())
+    assert history.price_type(con, whole) == "integer"
     assert history.check_month(con, "2021-03", old, LIVE)["rows"] == 1
 
     seconds = tmp_path / "seconds.parquet"  # what the file would hold if the README were right
@@ -161,10 +167,12 @@ def test_a_mismatch_quarantines_the_month_and_keeps_it_out_of_r2(h, tmp_path):
     payload = h.client.transport.hours[str(int(datetime.fromisoformat(hours[0]).timestamp()))]
     item = next(iter(payload["data"].values()))
     item["highPriceVolume"] = item.get("highPriceVolume", 0) + 1
-    assert history.check_1h(h)["build"]["months_quarantined"] == 1
+    built = history.check_1h(h)["build"]
+    assert built["months_quarantined"] == 1
     detail = json.loads(h.lake.read(history.MONTHS).to_pylist()[0]["check_detail"])
     bad = [d for d in detail if not d["ok"]]
     assert len(bad) == 1 and bad[0]["volume_mismatches"]
+    assert built["quarantined"] == {"2026-10": detail}  # the evidence, in the run's log
 
     target = local_lake(tmp_path / "r2")
     report = history.upload(h, target)
@@ -225,11 +233,25 @@ def test_upload_copies_validated_months_and_meets_live_at_the_seam(h, tmp_path):
     assert dry["months_uploaded"] == 1 and dry["commits"] == 4 and dry["bytes"]["total"] > 0
     assert target.table(history.PRICES_1H) is None
     history.upload(h, target)
-    history.upload(h, target)  # replace-where per month: a re-run converges
+    assert hashes(target) == hashes(h.lake)
+    versions = {name: target.table(name).version() for name in history.TABLES}
+
+    # Nothing vacuums history/, so a re-run must not rewrite what is already there.
+    again = history.upload(h, target)
+    assert (again["months_uploaded"], again["months_already_in_r2"], again["commits"]) == (0, 1, 0)
+    assert {name: target.table(name).version() for name in history.TABLES} == versions
+
+    # A month whose row in R2 differs (here: held back by an earlier upload) is written.
+    rows = target.read(history.MONTHS).to_pylist()
+    for row in rows:
+        row["status"] = "quarantined"
+    target.write(history.MONTHS, pa.Table.from_pylist(rows, schema=history.MONTHS_SCHEMA))
+    redo = history.upload(h, target)
+    assert (redo["months_uploaded"], redo["commits"]) == (1, 4)
     assert hashes(target) == hashes(h.lake)
 
-    with pytest.raises(history.NotReady, match="5 GB"):
-        history.upload(h, target, dry_run=True, stored_bytes=5 * 10**9)
+    with pytest.raises(history.NotReady, match="5 GB"):  # counted before anything is in R2
+        history.upload(h, None, dry_run=True, stored_bytes=5 * 10**9)
     late = pa.table({"bucket_start": pa.array([LIVE + timedelta(minutes=5)], type=history.TS)})
     target.write(ingest.BUCKETS, late)  # live data that starts after history ends: a hole
     with pytest.raises(history.NotReady, match="live data starts"):
