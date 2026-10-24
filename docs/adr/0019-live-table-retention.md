@@ -1,8 +1,8 @@
 # ADR-0019: Live tables keep ideas for ever and the rest for 30 days; closed months in zstd; fewer checkpoints
 
-- **Status:** Proposed. Each rule takes effect only when Sylvester turns it on (one setting each, section "Turning it on"); merging this ADR and its code deletes nothing.
+- **Status:** Accepted on 24 October 2026: all four rules (A1, B1, C1, D1), switched on in the same pull request. The first weekly run to apply them is Monday 26 October 00:xx UTC (rule D from the first commit after merge); the first rows are deleted by the run of Monday 23 November (days before 24 October), and October's 5-minute month is rewritten by the run of 9 November.
 - **Date:** 2026-10-21
-- **Decided by:** Proposed by the agent within the M2 preparation scope. What the paper record keeps is Sylvester's decision. Amends ADR-0015 (note added) and refines ADR-0016 decision 15.
+- **Decided by:** Proposed by the agent within the M2 preparation scope (21 October 2026); accepted by Sylvester ("yes, switch on ADR-0019", 24 October 2026). Amends ADR-0015 (note added) and refines ADR-0016 decision 15.
 
 ## Context
 
@@ -38,6 +38,16 @@ Growth per table, measured on recorded full-size responses (one hourly run on a 
 Of the mart's rows, 683 to 1,156 an hour are ideas (`is_idea`: grade A or B with a positive net GP), 16 to 27% and 20% on average over four hours of 20 and 21 October; the page publishes the top 100 (2.4%).
 
 That is about 22 MB a day of data and bronze. The other 12 MB a day are Delta log and checkpoint files, and hourly files that compress worse than the bulk-written day measured on 19 October.
+
+### Since the proposal (added on acceptance, 24 October 2026)
+
+| Readings (`storage_gb`) | Live growth |
+|---|---|
+| 20 and 21 October (above) | 34.0 MB a day |
+| 22 Oct 06:06 to 23 Oct 18:27: 1.469 to 1.535 GB | about 44 MB a day |
+| 23 Oct 18:40 (after the second history upload, about 1.753 GB) to 24 Oct 13:27: 1.794 GB | about 52 MB a day |
+
+Daily growth rose as the checkpoint model predicted ("towards about 50 to 55 MB by 25 October"), so rule D matters as projected. The M2 history upload is done: 1.54 GB of `history/` tables on 22 and 23 October (`docs/plans/M2.md`), 0.06 to 0.36 GB less than the projection assumed, and the rules take effect from 26 October instead of 9 November. Both move the dates in the projection below slightly later; the 2 November reading will refine them.
 
 ### Found by replaying the writers (`docs/research/probes/log_growth.py`)
 
@@ -98,7 +108,7 @@ Recommended: **A1, B1, C1 and D1**. A2 is the cheaper choice if keeping only wha
 - **`history/` is never touched** (ADR-0018): the rules act on `maintain.RETAINED` only, and a test checks that it shares no table with `history.TABLES`.
 - **The published v1 contract does not change:** the rules act only on days older than 30 days and on file layout, and `publish` reads the current hour (tested: `snapshot.json` and `status.json` are byte-identical before and after).
 
-### Until a rule is accepted
+### Before acceptance (until 24 October 2026)
 
 `maintain.RETENTION` is `KEEP_ALL` and `lake.CHECKPOINT_EVERY` is 1, so the code changes nothing on merge. Each weekly run then:
 - reports, per rule, what the proposal would remove (days, files, bytes and rows in scope, from the Delta log only, no data read);
@@ -108,7 +118,7 @@ Both land in the `maintain` task's detail in `ops/task_runs` and in the run log.
 
 ### Turning it on
 
-In one pull request that marks this ADR Accepted (or Accepted in part): set `maintain.RETENTION = PROPOSED` (or a `Retention` with only the chosen rules; A2 would need its predicate changed to `idea_rank <= 100`) and `lake.CHECKPOINT_EVERY = 10`. The next Monday run applies them; the run after it logs that run's Class A and B operations (`previous_window`).
+In one pull request that marks this ADR Accepted (or Accepted in part): set `maintain.RETENTION = PROPOSED` (or a `Retention` with only the chosen rules; A2 would need its predicate changed to `idea_rank <= 100`) and `lake.CHECKPOINT_EVERY = 10`. The next Monday run applies them; the run after it logs that run's Class A and B operations (`previous_window`). **Done on 24 October 2026**, all four rules.
 
 ### Cost (ADR-0015)
 
@@ -127,7 +137,7 @@ Deletes are free operations; rewrites are Class A writes. Estimates per weekly r
 
 | When | Reading | What it decides |
 |---|---|---|
-| 22 to 25 Oct | daily growth from the hourly `guard` lines | towards 50 to 55 MB a day: the checkpoint model holds and D1 matters as projected; near 34: checkpoints are smaller than modelled |
+| 22 to 25 Oct | daily growth from the hourly `guard` lines | towards 50 to 55 MB a day: the checkpoint model holds and D1 matters as projected; near 34: checkpoints are smaller than modelled. **Measured: about 44, then 52 MB a day; the model holds** |
 | 26 Oct, first weekly run | a step up, not down (compacted copies beside the hourly files) | confirms finding 2 |
 | 2 Nov, next weekly run | the take-back; growth from 2 to 9 Nov is the lasting rate | replaces the hourly-file upper bounds in the projection |
 | first run after this code merges | per-table files and bytes, and what each rule would remove | sizes A1 to C1 on the real lake |

@@ -22,9 +22,10 @@ from ge_intel.objects import LocalStore, ObjectStore, R2Store
 BUCKET = "ge-intel-lake"
 ZSTD = WriterProperties(compression="ZSTD")  # about a fifth smaller than the default snappy
 # A checkpoint lists every live file of the table, and delta keeps log files 30 days, so one
-# per commit is a large share of the lake's growth (ADR-0019). ADR-0019 proposes 10, which
-# S1 rule 2 allows; until it is accepted, every commit.
-CHECKPOINT_EVERY = 1
+# per commit is a large share of the lake's growth. Every 10th version instead (ADR-0019 rule D,
+# accepted 24 October 2026), which S1 rule 2 allows; the weekly maintenance still checkpoints
+# every table.
+CHECKPOINT_EVERY = 10
 
 
 def r2_storage_options(account_id: str, key_id: str, secret: str) -> dict[str, str]:

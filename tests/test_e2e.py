@@ -120,10 +120,10 @@ def test_contract_violations_are_refused(run):
         publish.validate("snapshot", broken)
 
 
-def test_weekly_maintenance_keeps_everything_until_retention_is_accepted(run):
+def test_weekly_maintenance_applies_the_accepted_retention(run):
     rows = run["ctx"].lake.read(TASK_RUNS).to_pylist()
     detail = json.loads(next(r["detail"] for r in rows if r["task"] == "maintain"))
-    assert not any(rule["applied"] for rule in detail["retention"].values())  # ADR-0019
+    assert all(rule["applied"] for rule in detail["retention"].values())  # ADR-0019, accepted
     assert detail["tables"][SNAPSHOT]["files"] >= 1 and detail["tables"][SNAPSHOT]["bytes"] > 0
 
 
