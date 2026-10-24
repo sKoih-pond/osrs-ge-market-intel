@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 import pytest
 from conftest import make_context
 
-from ge_intel import history, ingest, maintain, publish, tasks
+from ge_intel import history, ingest, lake, maintain, publish, tasks
 from ge_intel.build import SNAPSHOT
 from ge_intel.ingest import LATEST, PRICES
 from ge_intel.lake import content_hash
@@ -220,8 +220,13 @@ def october(lake):
     )
 
 
-def test_the_live_setting_keeps_everything_and_reports_the_proposal(root):
-    assert maintain.RETENTION == KEEP_ALL  # deletes wait on Sylvester's decision (ADR-0019)
+def test_the_live_setting_is_the_accepted_proposal():
+    assert maintain.RETENTION == PROPOSED  # ADR-0019, accepted by Sylvester on 24 October 2026
+    assert lake.CHECKPOINT_EVERY == 10  # rule D
+
+
+def test_rules_switched_off_keep_everything_and_report_what_they_would_remove(root, monkeypatch):
+    monkeypatch.setattr(maintain, "RETENTION", KEEP_ALL)
     ctx = make_context(root, now=NOW)
     before = {t: ctx.lake.read(t).num_rows for t in maintain.RETAINED}
 

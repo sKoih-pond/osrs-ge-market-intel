@@ -11,8 +11,8 @@
 Retention runs here because the hourly workflow is the only writer of the live tables. It
 deletes through delta-rs, never through an R2 lifecycle rule (which would delete files the
 Delta log still lists), and never touches `history/` (ADR-0018). Deleting data in R2 is
-Sylvester's decision: until ADR-0019 is accepted, `RETENTION` keeps everything and each weekly
-run only reports what `PROPOSED` would remove.
+Sylvester's decision: he accepted ADR-0019's four rules on 24 October 2026, so `RETENTION` is
+`PROPOSED`. A rule set back to off only reports what it would remove.
 """
 
 from __future__ import annotations
@@ -47,7 +47,7 @@ class Retention:
 
 KEEP_ALL = Retention(snapshot_full_days=None, latest_days=None, rewrite_closed_months=False)
 PROPOSED = Retention(snapshot_full_days=30, latest_days=30, rewrite_closed_months=True)
-RETENTION = KEEP_ALL  # until Sylvester accepts ADR-0019
+RETENTION = PROPOSED  # ADR-0019, accepted by Sylvester on 24 October 2026
 RETAINED = (SNAPSHOT, LATEST, PRICES)
 # A mart day loses its non-idea rows in the weekly run after its age passes the limit; the run
 # also re-checks the four weeks before, so a paused week catches up while the scan for idea

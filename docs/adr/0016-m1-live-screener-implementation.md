@@ -32,7 +32,7 @@ M1 turns the M0 decisions into a running pipeline: hourly ingestion of `/5m`, `/
 12. **Prices round against the trader:** buy at the trailing instant-sell VWAP rounded up, sell at the trailing instant-buy VWAP rounded down, both to whole coins before tax (ADR-0007).
 13. **"Recent instant-sell volume" in the feasible quantity is the policy's entry window** (4 hours for casual-v1), the same window the buy offer competes in.
 14. **One tax implementation.** The mart calls `ge_tax_per_item`, a DuckDB macro generated from `ge_intel.tax`'s eras and cap by a dbt-duckdb plugin; a test checks the macro against the Python function on every edge case. (A Python UDF would have needed numpy.)
-15. **The paper record starts.** Every hour's full mart, including `is_idea` and `idea_rank`, is kept in `gold/market_snapshot` under `policy_id = casual-v1`; scoring each idea 24 hours later arrives with the M4 simulator. (ADR-0019, Proposed: keep every idea row for ever and the full mart for 30 days.)
+15. **The paper record starts.** Every hour's full mart, including `is_idea` and `idea_rank`, is kept in `gold/market_snapshot` under `policy_id = casual-v1`; scoring each idea 24 hours later arrives with the M4 simulator. (ADR-0019, accepted 24 October 2026: every idea row is kept for ever and the full mart for 30 days.)
 
 15a. **Gold tables may gain columns.** The snapshot write uses delta-rs `schema_mode="merge"`, which adds nullable columns without changing the protocol (reader 1, writer 2, no features; tested). Removing or retyping a column still needs a new table or a rebuild.
 

@@ -40,9 +40,9 @@ def test_checkpoints_every_nth_version_when_asked(tmp_path):
         log = tmp_path / lake.root.rsplit("/", 1)[-1] / "silver" / "t" / "_delta_log"
         return sorted(int(f.name.split(".")[0]) for f in log.glob("*.checkpoint.parquet"))
 
-    every = Lake(root=str(tmp_path / "every"), store=LocalStore(tmp_path))
-    tenth = Lake(root=str(tmp_path / "tenth"), store=LocalStore(tmp_path), checkpoint_every=10)
-    assert every.checkpoint_every == 1  # S1 rule 2 until ADR-0019 is accepted
+    every = Lake(root=str(tmp_path / "every"), store=LocalStore(tmp_path), checkpoint_every=1)
+    tenth = Lake(root=str(tmp_path / "tenth"), store=LocalStore(tmp_path))
+    assert tenth.checkpoint_every == 10  # ADR-0019 rule D, accepted 24 October 2026
     for lake in (every, tenth):
         for i in range(12):
             lake.write("silver/t", pa.table({"x": [i]}), mode="append")
