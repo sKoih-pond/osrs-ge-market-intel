@@ -97,6 +97,7 @@ class PreviousRun:
     run_id: str
     started_at: datetime
     finished_at: datetime
+    maintenance: bool = False  # the run worked on the weekly maintenance (MAINTENANCE_CAPS)
 
 
 @dataclass(frozen=True)
@@ -171,6 +172,13 @@ class RunBudget:
 
 
 SETTLE = timedelta(minutes=6)  # analytics complete about 5 minutes after the fact
+# The previous-run check's caps for a run that worked on the weekly maintenance, whose engine
+# reads and writes `RunBudget` does not count (ADR-0019, amended 26 October 2026). The first
+# full weekly run measured about 172 Class A and 5,170 Class B for a run with the hour's tasks
+# and 7 minutes of maintenance, and about 105 A and 2,100 B for the run that finished it. A
+# run starts no maintenance table after `tasks.RUN_BUDGET`, so these leave about double room;
+# each is 0.1% and 0.15% of the monthly free allowance, and the month-to-date halt still holds.
+MAINTENANCE_CAPS = RunBudget(max_class_a=1_000, max_class_b=15_000)
 
 
 def check_previous_run(
@@ -179,10 +187,11 @@ def check_previous_run(
     acknowledged_run_id: str | None = None,
     caps: RunBudget | None = None,
 ) -> Verdict:
-    """Block if the previous run used more than one run's caps, unless it was acknowledged."""
+    """Block if the previous run used more than one run's caps (`MAINTENANCE_CAPS` if it worked
+    on the weekly maintenance), unless it was acknowledged."""
     if previous is None or usage.previous_window is None:
         return Verdict(True, (), ())
-    caps = caps or RunBudget()
+    caps = caps or (MAINTENANCE_CAPS if previous.maintenance else RunBudget())
     a, b = usage.previous_window
     warnings: list[str] = []
     if usage.as_of - previous.finished_at < SETTLE:

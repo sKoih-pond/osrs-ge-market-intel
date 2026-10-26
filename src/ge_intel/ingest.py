@@ -15,7 +15,7 @@ import hashlib
 import json
 import statistics
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import pyarrow as pa
 
@@ -106,6 +106,11 @@ class Context:
     run_id: str
     max_buckets: int = MAX_BUCKETS_PER_RUN
     cache: dict = field(default_factory=dict)
+    # Wall-clock time after which a run starts no new work (`tasks.RUN_BUDGET`); None: no limit.
+    deadline: datetime | None = None
+
+    def out_of_time(self) -> bool:
+        return self.deadline is not None and datetime.now(UTC) >= self.deadline
 
     def metadata(self, task: str, start: datetime, end: datetime) -> dict[str, str]:
         return {

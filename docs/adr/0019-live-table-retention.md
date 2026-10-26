@@ -122,7 +122,20 @@ In one pull request that marks this ADR Accepted (or Accepted in part): set `mai
 
 ### Cost (ADR-0015)
 
-Deletes are free operations; rewrites are Class A writes. Estimates per weekly run once on: A1 rewrites about seven day files plus a commit and a checkpoint (about 15 Class A); B1 writes only a commit and a checkpoint (about 3 Class A); C1, once a month, writes about 31 day files plus a commit and a checkpoint (about 40 Class A, about 0.12 GB written) and reads the month (about 0.17 GB, about 100 Class B); the dry-run reports read nothing extra. A normal hourly run measured 85 Class A and 555 to 703 Class B (`previous_window`, 20 and 21 October), against per-run caps of 500 and 5,000. D1 saves nine checkpoint writes in ten and adds up to nine small reads per table load. Engine writes are not counted by `RunBudget` (compaction's are not either); they are bounded by the step timeout and checked by the next run's `previous_window`.
+Deletes are free operations; rewrites are Class A writes. Estimates per weekly run once on: A1 rewrites about seven day files plus a commit and a checkpoint (about 15 Class A); B1 writes only a commit and a checkpoint (about 3 Class A); C1, once a month, writes about 31 day files plus a commit and a checkpoint (about 40 Class A, about 0.12 GB written) and reads the month (about 0.17 GB, about 100 Class B); the dry-run reports read nothing extra. A normal hourly run measured 85 Class A and 555 to 703 Class B (`previous_window`, 20 and 21 October), against per-run caps of 500 and 5,000. D1 saves nine checkpoint writes in ten and adds up to nine small reads per table load. Engine writes are not counted by `RunBudget` (compaction's are not either); they are bounded by the run time budget and checked by the next run's `previous_window` (amendment below).
+
+### Amendment (26 October 2026): a run time budget and a maintenance allowance
+
+Accepted by Sylvester ("Go with 1", 26 October 2026) after the first weekly run with the rules on.
+
+**What happened.** The 00:06 run did the hour's tasks and the daily ones, then started `maintain` about 5 minutes in. The hourly step's 12-minute timeout killed it 7 minutes later, with five tables compacted. The 00:26 run finished the job in 294 seconds, and every rule reported `applied: true` with nothing yet in scope. The time went on compacting and vacuuming a week of hourly files, about 12 minutes in all, not on retention. The killed run wrote no record, so the next run's guard checked an older run and never counted it: about 172 Class A and 5,170 Class B by the month-to-date totals, over one run's 5,000 Class B cap.
+
+**Decision.**
+- **Run time budget:** a run starts no new task, and `maintain` no new table, once `tasks.RUN_BUDGET` (7 minutes) has passed since the run began. That leaves about 4 of the step's 12 minutes for the last unit of work and the run's record, so the 12-minute bound stays and the run records itself.
+- **Resumable maintenance:** work left over waits for the next run. `maintain` then reports `partial` (`deferred` lists the tables left), the week is not marked done, and the next run carries on; every step is safe to repeat. Each table's `seconds` is logged.
+- **Maintenance allowance:** the previous-run check uses `cost_guard.MAINTENANCE_CAPS`, 1,000 Class A and 15,000 Class B, for a run that worked on the maintenance, whose engine work `RunBudget` does not count. That is about double the measured figures, 0.1% and 0.15% of the monthly free allowance per run; the month-to-date halt is unchanged.
+
+**Still open.** A run killed for another reason (a single unit of work longer than 4 minutes, or a hang) still records nothing; the per-table `seconds` show whether any table comes near that.
 
 ## Consequences
 

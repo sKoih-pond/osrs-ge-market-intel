@@ -26,6 +26,13 @@ from ge_intel.timegrid import DAY, HOUR, floor, iso
 # backfill, which a person starts (`ge-intel run ingest_5m --start --end`); history before
 # go-live lives in its own tables and never reaches this manifest.
 LIVE_GAP_WINDOW = timedelta(days=7)
+# A run starts no new task, and the weekly maintenance no new table, once this long has passed
+# since the run began. The `ge-intel hourly` step times out at 12 minutes (hourly.yml) and the
+# cost guard runs for about a minute first, which leaves about 4 minutes for the last unit of
+# work and the run's record. A run the step timeout kills records nothing, so the next run's
+# guard cannot count its operations: the first full weekly maintenance (26 October 2026)
+# needed about 12 minutes and was killed that way. Work left over continues in the next run.
+RUN_BUDGET = timedelta(minutes=7)
 
 
 @dataclass(frozen=True)
@@ -144,15 +151,25 @@ def interval_for(ctx: Context, task: Task, end_hour: datetime) -> tuple[datetime
 
 
 def hourly(
-    ctx: Context, end_hour: datetime, *, force: bool = False, only: set[str] | None = None
+    ctx: Context,
+    end_hour: datetime,
+    *,
+    force: bool = False,
+    only: set[str] | None = None,
+    budget: timedelta = RUN_BUDGET,
 ) -> int:
-    """Run every task in registry order for the hour ending at `end_hour`. Exit code."""
+    """Run every task in registry order for the hour ending at `end_hour`, starting none after
+    `budget` (tasks left over are deferred to the next run). Exit code."""
     rows: list[dict] = []
     started = datetime.now(UTC)
-    outcome, failed_task = "success", None
+    ctx.deadline = started + budget
+    outcome, failed_task, deferred = "success", None, []
     try:
         for name, task in REGISTRY.items():
             if only and name not in only:
+                continue
+            if ctx.out_of_time():
+                deferred.append(name)
                 continue
             start, end = interval_for(ctx, task, end_hour)
             try:
@@ -162,6 +179,8 @@ def hourly(
                 outcome, failed_task = "failed", name
                 break
     finally:
+        if deferred:
+            log("tasks_deferred", tasks=deferred, reason="run time budget")
         worked = [r for r in rows if r["status"] != "complete"]
         if worked:
             rows.append(
@@ -173,7 +192,11 @@ def hourly(
                     "started_at": started,
                     "finished_at": datetime.now(UTC),
                     "status": outcome,
-                    "detail": {"failed_task": failed_task, "commits": ctx.lake.commits},
+                    "detail": {
+                        "failed_task": failed_task,
+                        "deferred": deferred,
+                        "commits": ctx.lake.commits,
+                    },
                     "code_version": ops.code_version(),
                     "orchestrator": ops.orchestrator(),
                 }

@@ -18,6 +18,7 @@ Sylvester's decision: he accepted ADR-0019's four rules on 24 October 2026, so `
 from __future__ import annotations
 
 import tempfile
+import time
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
@@ -262,12 +263,23 @@ def apply_retention(ctx: Context, policy: Retention, start: datetime, end: datet
 
 
 def maintain(ctx: Context, start: datetime, end: datetime) -> dict:
+    """Retention, then each table in turn. When the run's time is up (`ctx.deadline`) it stops
+    between tables and reports `partial`, so the interval is not complete and the next run
+    carries on; every step is safe to repeat, and a table already compacted costs little."""
     retention = apply_retention(ctx, RETENTION, start, end)  # first, so compaction sees it
     done = {}
-    for name in TABLES:
+    for i, name in enumerate(TABLES):
+        if ctx.out_of_time():
+            return {
+                "status": "partial",
+                "tables": done,
+                "deferred": list(TABLES[i:]),
+                "retention": retention,
+            }
         dt = ctx.lake.table(name)
         if dt is None:
             continue
+        t0 = time.monotonic()
         metrics = dt.optimize.compact()
         removed = dt.vacuum(retention_hours=RETENTION_HOURS, dry_run=False, full=True)
         dt.cleanup_metadata()
@@ -280,5 +292,6 @@ def maintain(ctx: Context, start: datetime, end: datetime) -> dict:
             "version": dt.version(),
             "files": len(files),
             "bytes": sum(f["bytes"] for f in files),
+            "seconds": round(time.monotonic() - t0, 1),
         }
     return {"tables": done, "retention": retention}
