@@ -1,3 +1,4 @@
+import dataclasses
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -185,3 +186,14 @@ def test_one_query_carries_the_previous_window():
     cg.fetch_usage("acct", "tok", now=LATER, post_json=fake_post, previous=PREV)
     assert seen["prevStart"] == "2026-10-16T00:04:00+00:00"
     assert seen["prevEnd"] == "2026-10-16T00:11:00+00:00"
+
+
+def test_a_maintenance_run_has_its_own_caps():
+    """The weekly maintenance's engine work is not counted by RunBudget; the first full run
+    (26 October 2026) used about 5,170 Class B with the hour's tasks."""
+    usage = cg.Usage(0, 0, 0, LATER, previous_window=(400, 5_200))
+    assert not cg.check_previous_run(usage, PREV).allowed
+    maintenance = dataclasses.replace(PREV, maintenance=True)
+    assert cg.check_previous_run(usage, maintenance).allowed
+    over = cg.Usage(0, 0, 0, LATER, previous_window=(1_001, 100))
+    assert not cg.check_previous_run(over, maintenance).allowed

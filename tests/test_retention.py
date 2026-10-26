@@ -14,7 +14,7 @@ import pyarrow.parquet as pq
 import pytest
 from conftest import make_context
 
-from ge_intel import history, ingest, lake, maintain, publish, tasks
+from ge_intel import history, ingest, lake, maintain, ops, publish, tasks
 from ge_intel.build import SNAPSHOT
 from ge_intel.ingest import LATEST, PRICES
 from ge_intel.lake import content_hash
@@ -355,3 +355,26 @@ def test_retention_keeps_the_published_contract_and_leaves_history_alone(root, m
 
     assert published(root.parent / "dist-after") == before
     assert json.loads(before["snapshot"])["counts"]["ideas_published"] == 2
+
+
+def test_maintenance_stops_between_tables_when_the_run_is_out_of_time(root):
+    """A run past its time budget (tasks.RUN_BUDGET) leaves the remaining tables to the next
+    run, and the week counts as maintained only once every table is (26 October 2026: the
+    first full weekly run outlasted the hourly step and was killed)."""
+    ctx = make_context(root, now=NOW)
+    ctx.deadline = datetime(2000, 1, 1, tzinfo=UTC)  # long past
+    rows: list[dict] = []
+    first = tasks.run_task(ctx, "maintain", START, END, force=False, rows=rows)
+    assert first["status"] == "partial" and first["tables"] == {}
+    assert first["deferred"] == list(maintain.TABLES)
+    assert first["retention"][SNAPSHOT]["rows_deleted"] == 4  # retention ran before the stop
+    ops.flush(ctx.lake, rows)
+    ctx.cache.clear()
+    assert not ops.is_complete(ctx.lake, ctx.cache, "maintain", START, END)
+
+    ctx.deadline = None
+    again = tasks.run_task(ctx, "maintain", START, END, force=False, rows=rows)
+    assert again["status"] == "success" and "deferred" not in again
+    assert again["retention"][SNAPSHOT].get("rows_deleted", 0) == 0  # nothing left to do
+    assert set(again["tables"]) >= set(maintain.RETAINED)
+    assert all("seconds" in t for t in again["tables"].values())

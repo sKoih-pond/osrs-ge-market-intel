@@ -29,7 +29,7 @@ RUNS_SCHEMA = pa.schema(
         ("interval_end", TS),
         ("started_at", TS),
         ("finished_at", TS),
-        ("status", pa.string()),  # success | skipped | failed | blocked
+        ("status", pa.string()),  # success | partial | skipped | failed | blocked
         ("detail", pa.string()),  # JSON
         ("code_version", pa.string()),
         ("orchestrator", pa.string()),

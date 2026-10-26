@@ -42,10 +42,12 @@ def context(budget: RunBudget | None = None) -> Context:
 
 
 def previous_run(ctx: Context) -> cost_guard.PreviousRun | None:
-    row = ops.last_run(ops.runs(ctx.lake, ctx.cache), "hourly", statuses=("success", "failed"))
+    rows = ops.runs(ctx.lake, ctx.cache)
+    row = ops.last_run(rows, "hourly", statuses=("success", "failed"))
     if row is None:
         return None
-    return cost_guard.PreviousRun(row["run_id"], row["started_at"], row["finished_at"])
+    maintenance = any(r["run_id"] == row["run_id"] and r["task"] == "maintain" for r in rows)
+    return cost_guard.PreviousRun(row["run_id"], row["started_at"], row["finished_at"], maintenance)
 
 
 def guard(ctx: Context) -> int:

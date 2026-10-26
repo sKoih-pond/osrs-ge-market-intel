@@ -1,12 +1,14 @@
-"""The scheduler's clock: which hour a run works on, and the gap-fill window (ADR-0018): years of
-history in the live manifest, or a long pause, must never turn the hourly run into a backfill."""
+"""The scheduler's clock: which hour a run works on, its time budget (ADR-0019 amendment), and the
+gap-fill window (ADR-0018): years of history in the live manifest, or a long pause, must never
+turn the hourly run into a backfill."""
 
+import json
 from datetime import UTC, datetime, timedelta
 
 import pyarrow as pa
 from conftest import FIXTURE_END, FixtureTransport, make_context
 
-from ge_intel import ingest, tasks, wiki
+from ge_intel import cli, ingest, ops, tasks, wiki
 from ge_intel.timegrid import FIVE_MIN
 
 GAP_FILL = tasks.REGISTRY["ingest_5m"]
@@ -52,3 +54,45 @@ def test_a_run_in_the_first_minute_of_an_hour_works_on_the_hour_before():
         end = tasks.newest_closed_hour(now)
         assert wiki.bucket_is_closed(end - FIVE_MIN, "5m", now)
         assert end == at or not wiki.bucket_is_closed(last_bucket, "5m", now)
+
+
+def test_a_run_out_of_time_defers_its_remaining_tasks(lake_root, capsys):
+    ctx = make_context(lake_root)
+    assert tasks.hourly(ctx, FIXTURE_END, budget=timedelta(0)) == 0
+    assert ctx.client.transport.urls == []  # nothing started, so nothing fetched
+    events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
+    deferred = next(e for e in events if e["event"] == "tasks_deferred")
+    assert deferred["tasks"] == list(tasks.REGISTRY) and deferred["reason"] == "run time budget"
+    assert tasks.RUN_BUDGET == timedelta(minutes=7)  # leaves 4 of the step's 12 minutes
+
+
+def test_the_guard_knows_when_the_previous_run_worked_on_maintenance(lake_root):
+    ctx = make_context(lake_root)
+    t0 = datetime(2026, 10, 26, 0, 26, tzinfo=UTC)
+
+    def row(run, task, status, minute):
+        at = t0 + timedelta(minutes=minute)
+        return {
+            "run_id": run,
+            "task": task,
+            "interval_start": t0,
+            "interval_end": t0,
+            "started_at": at,
+            "finished_at": at + timedelta(minutes=5),
+            "status": status,
+            "detail": {},
+            "code_version": "test",
+            "orchestrator": "test",
+        }
+
+    ops.flush(
+        ctx.lake, [row("gha-1-1", "maintain", "partial", 0), row("gha-1-1", "hourly", "success", 0)]
+    )
+    assert cli.previous_run(ctx).maintenance
+    ops.flush(
+        ctx.lake,
+        [row("gha-2-1", "ingest_5m", "success", 40), row("gha-2-1", "hourly", "success", 40)],
+    )
+    ctx.cache.clear()
+    previous = cli.previous_run(ctx)
+    assert previous.run_id == "gha-2-1" and not previous.maintenance

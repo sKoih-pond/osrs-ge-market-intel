@@ -31,7 +31,7 @@ Repository settings the workflows read: secrets `R2_ACCESS_KEY_ID`, `R2_SECRET_A
 
 - **Exit 2, usage unreadable:** the analytics API refused or timed out (it rate-limits after about six heavy queries in five minutes). The next run retries. If it persists, check the `CLOUDFLARE_ANALYTICS_TOKEN` secret.
 - **Exit 3, month-to-date usage at 50% of a free allowance or 6 GB stored:** stop and investigate before anything else runs. Read usage in the Cloudflare dashboard (R2, Metrics). Nothing restarts on its own until usage drops back (next month) or the cause is fixed.
-- **Exit 3, previous run over its per-run budget:** the log names the run id and its counts. Look at that run: what did it do differently (a large catch-up, maintenance, a bug)? When satisfied, set the repository variable `GE_GUARD_ACK_RUN_ID` to that run id. Runs resume on the next slot. The acknowledgement covers that one run only.
+- **Exit 3, previous run over its per-run budget:** the log names the run id and its counts (caps 500 Class A and 5,000 Class B; 1,000 and 15,000 for a run that worked on the weekly maintenance, ADR-0019). Look at that run: what did it do differently (a large catch-up, maintenance, a bug)? When satisfied, set the repository variable `GE_GUARD_ACK_RUN_ID` to that run id. Runs resume on the next slot. The acknowledgement covers that one run only.
 
 ## The watchdog opened an issue
 
@@ -77,9 +77,11 @@ Stored bytes are in every run's `guard` line (`storage_gb`). The weekly `maintai
 
 Expected around the first weekly runs: a step **up** after compaction (26 October: the compacted copies sit beside the hourly files) and the take-back a week later (2 November), when VACUUM deletes the replaced files.
 
+**The weekly maintenance may take more than one run.** A run starts no new task, and `maintain` no new table, after 7 minutes (`tasks.RUN_BUDGET`), so the 12-minute step never kills it. When time runs out, `maintain`'s `task_finished` line says `status: partial` and lists the tables left in `deferred`; the next run carries on (the :26 run has most of its budget free). The run's own line says `tasks_deferred` for any task it did not start. Neither is a failure. Each table's `seconds` shows how long it took; one near 4 minutes risks the step timeout and needs a look.
+
 **All four rules are on** since 24 October 2026 (ADR-0019 accepted; `RETENTION = PROPOSED`, `CHECKPOINT_EVERY = 10`). The first run to apply them is Monday 26 October; the first rows are deleted by the run of Monday 23 November (days before 24 October), and October's 5-minute month is rewritten by the run of 9 November. **Changing a rule** (Sylvester's decision):
 1. In a pull request that updates ADR-0019, set `RETENTION` in `src/ge_intel/maintain.py` to a `Retention` with only the chosen rules (or `KEEP_ALL`), or `CHECKPOINT_EVERY` in `src/ge_intel/lake.py`. Merge.
-2. The next Monday run applies the rules; its `retention` block shows rows deleted and files rewritten. The run after it logs that run's operations in `previous_window` (caps 500 Class A, 5,000 Class B).
+2. The next Monday run applies the rules; its `retention` block shows rows deleted and files rewritten. The run after it logs that run's operations in `previous_window` (caps 1,000 Class A, 15,000 Class B for a run that worked on the maintenance).
 3. Storage falls at the following Monday's VACUUM, not at once.
 
 **Undoing:** set the rule back. Rows a rule deleted can still be read from the previous table version (Delta time travel) until the VACUUM a week later deletes the files; after that they are gone. The zstd rewrite of a month changes no rows.
