@@ -2,7 +2,7 @@
 
 A zero-cost data platform that turns 5-minute Grand Exchange trade data into tax-aware trade ideas and anomaly alerts, and shows how far each one can be trusted.
 
-**Status: M1 (live, honest screener) in progress.** An hourly GitHub Actions pipeline ingests the OSRS Wiki's 5-minute data into Delta tables on Cloudflare R2, builds a tax-aware market snapshot with dbt and DuckDB, and publishes a validated data contract for a page at `kohstack.tech/ge/` (deploys switch on once approved). The M1 acceptance window (seven days at 95% of hours published within 45 minutes) starts when it goes live; the status page will show it.
+**Status (1 November 2026): M1 live, M2 in progress.** Since 20 October 2026 an hourly GitHub Actions pipeline, started by a Cloudflare cron trigger, has ingested the OSRS Wiki's 5-minute data into Delta tables on Cloudflare R2, built a tax-aware market snapshot with dbt and DuckDB, and published a validated data contract to [kohstack.tech/ge/](https://kohstack.tech/ge/). In M1's seven-day window, 21 to 27 October, all 168 hours were published within 45 minutes of the hour closing (target 95%); [the status page](https://kohstack.tech/ge/status/) shows the current figures. M2 has loaded the history: 68 months from the Kaggle dump, each spot-checked against the Wiki's `/1h` data, are in R2 as about 138 million hourly rows. The rest of M2, including a second source, the 30 September break profile, reconciliation and the completeness report, is planned (`docs/plans/M2.md`).
 
 ## Why this is an interesting data problem
 
