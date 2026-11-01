@@ -1,6 +1,6 @@
 # ADR-0020: The history job runs on a GitHub runner started on request; its raw responses live in R2
 
-- **Status:** Proposed (accepted when Sylvester merges the PR that carries it)
+- **Status:** Accepted on 21 October 2026, when PR #10 merged with it (it came in through PR #11, stacked on #10)
 - **Date:** 2026-10-21
 - **Decided by:** Sylvester chose a free cloud host over the laptop ("I'd like to keep space on my MacBook", 21 October 2026); design by the agent. Amends ADR-0015 (layer 2's rule on backfill raw responses), ADR-0018 (decision 4 and its laptop context) and ADR-0019 (where option C2 would move data); each carries a note.
 
