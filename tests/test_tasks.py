@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pyarrow as pa
 from conftest import FIXTURE_END, FixtureTransport, make_context
 
-from ge_intel import cli, ingest, ops, tasks, wiki
+from ge_intel import cli, ingest, maintain, ops, tasks, wiki
 from ge_intel.timegrid import FIVE_MIN
 
 GAP_FILL = tasks.REGISTRY["ingest_5m"]
@@ -96,3 +96,12 @@ def test_the_guard_knows_when_the_previous_run_worked_on_maintenance(lake_root):
     ctx.cache.clear()
     previous = cli.previous_run(ctx)
     assert previous.run_id == "gha-2-1" and not previous.maintenance
+
+
+def test_daily_compaction_runs_after_the_checks_and_before_the_weekly_pass():
+    names = list(tasks.REGISTRY)
+    order = [names.index(n) for n in ("publish", "check_duplicates", "compact_daily", "maintain")]
+    assert order == sorted(order)  # never delays the page; the weekly pass then finds them small
+    task = tasks.REGISTRY["compact_daily"]
+    assert task.cadence == "daily" and task.writes == maintain.DAILY_TABLES
+    assert set(maintain.DAILY_TABLES) <= set(maintain.TABLES)

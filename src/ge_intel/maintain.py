@@ -3,10 +3,14 @@
 - `check_duplicates` (daily): no (item, bucket) pair appears twice in a day's partition of
   `silver/prices_5m`, and no bucket appears twice in the manifest. Duplicates can only arise
   within a bucket, so checking each day's partition once covers the whole table.
+- `compact_daily` (daily): the same table steps as `maintain` for the two unpartitioned tables
+  that gain one small file per commit (`DAILY_TABLES`), so the weekly pass finds them small.
 - `maintain` (weekly, ADR-0015 layer 2): retention (ADR-0019), then compaction, `VACUUM` with
   7-day retention in full mode (so files left by crashed writers go too, spike S1 rule 4),
   expired-log clean-up and a fresh checkpoint, one table at a time. It reports each table's
   files and bytes from the Delta log, so storage can be traced per table without reading data.
+  Both stop when the run's time is up, between tables or between a table's compaction and its
+  VACUUM, and the next run carries on (ADR-0019 amendments).
 
 Retention runs here because the hourly workflow is the only writer of the live tables. It
 deletes through delta-rs, never through an R2 lifecycle rule (which would delete files the
@@ -34,6 +38,8 @@ from ge_intel.ops import TASK_RUNS
 
 RETENTION_HOURS = 7 * 24
 TABLES = (PRICES, BUCKETS, LATEST, ITEMS, SNAPSHOT, TASK_RUNS)
+# Unpartitioned, one small file per commit (about 170 and 370 a week): compacted daily too.
+DAILY_TABLES = (BUCKETS, TASK_RUNS)
 
 
 @dataclass(frozen=True)
@@ -262,36 +268,64 @@ def apply_retention(ctx: Context, policy: Retention, start: datetime, end: datet
     }
 
 
-def maintain(ctx: Context, start: datetime, end: datetime) -> dict:
-    """Retention, then each table in turn. When the run's time is up (`ctx.deadline`) it stops
-    between tables and reports `partial`, so the interval is not complete and the next run
-    carries on; every step is safe to repeat, and a table already compacted costs little."""
-    retention = apply_retention(ctx, RETENTION, start, end)  # first, so compaction sees it
-    done = {}
-    for i, name in enumerate(TABLES):
-        if ctx.out_of_time():
-            return {
-                "status": "partial",
-                "tables": done,
-                "deferred": list(TABLES[i:]),
-                "retention": retention,
-            }
-        dt = ctx.lake.table(name)
-        if dt is None:
-            continue
-        t0 = time.monotonic()
-        metrics = dt.optimize.compact()
+def tidy_table(ctx: Context, name: str) -> dict | None:
+    """Compact one table; then, if the run still has time (`ctx.deadline`), VACUUM it (7 days,
+    full), clean up expired log files and checkpoint. A stop after compaction is reported as
+    `stopped_after`; every step is safe to repeat. None if the table does not exist yet."""
+    dt = ctx.lake.table(name)
+    if dt is None:
+        return None
+    t0 = time.monotonic()
+    metrics = dt.optimize.compact()
+    out = {
+        "files_added": metrics.get("numFilesAdded"),
+        "files_removed": metrics.get("numFilesRemoved"),
+        "compact_s": round(time.monotonic() - t0, 1),
+    }
+    if ctx.out_of_time():
+        out["stopped_after"] = "compact"
+    else:
+        t1 = time.monotonic()
         removed = dt.vacuum(retention_hours=RETENTION_HOURS, dry_run=False, full=True)
         dt.cleanup_metadata()
         dt.create_checkpoint()
-        files = active_files(dt)
-        done[name] = {
-            "files_added": metrics.get("numFilesAdded"),
-            "files_removed": metrics.get("numFilesRemoved"),
-            "vacuumed": len(removed),
-            "version": dt.version(),
-            "files": len(files),
-            "bytes": sum(f["bytes"] for f in files),
-            "seconds": round(time.monotonic() - t0, 1),
-        }
-    return {"tables": done, "retention": retention}
+        out |= {"vacuumed": len(removed), "vacuum_s": round(time.monotonic() - t1, 1)}
+    files = active_files(dt)
+    return out | {
+        "version": dt.version(),
+        "files": len(files),
+        "bytes": sum(f["bytes"] for f in files),
+        "seconds": round(time.monotonic() - t0, 1),
+    }
+
+
+def tidy_tables(ctx: Context, names: tuple[str, ...]) -> dict:
+    """`tidy_table` for each table in turn. When the run's time is up, before a table or between
+    its compaction and its VACUUM, it reports `partial` with the tables left in `deferred` (a
+    half-done table first), so the interval is not complete and the next run carries on."""
+    done = {}
+    for i, name in enumerate(names):
+        if ctx.out_of_time():
+            return {"status": "partial", "tables": done, "deferred": list(names[i:])}
+        out = tidy_table(ctx, name)
+        if out is None:
+            continue
+        done[name] = out
+        if "stopped_after" in out:
+            return {"status": "partial", "tables": done, "deferred": list(names[i:])}
+    return {"tables": done}
+
+
+def maintain(ctx: Context, start: datetime, end: datetime) -> dict:
+    """Retention, then each table in turn (`tidy_tables`). Retention runs before the first time
+    check; a table already compacted costs little when a later run carries on."""
+    retention = apply_retention(ctx, RETENTION, start, end)  # first, so compaction sees it
+    return {**tidy_tables(ctx, TABLES), "retention": retention}
+
+
+def compact_daily(ctx: Context, start: datetime, end: datetime) -> dict:
+    """The weekly maintenance's table steps, every day, for the two unpartitioned tables that
+    gain one small file per commit (`DAILY_TABLES`). Compacted weekly, a week of their files
+    took 163 and 365 seconds on 2 November 2026, each one step the run's time budget cannot
+    split; a day's files take about a minute for the run log and half that for the manifest."""
+    return tidy_tables(ctx, DAILY_TABLES)

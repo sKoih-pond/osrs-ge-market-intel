@@ -49,7 +49,7 @@ Four layers. The first two cannot be bypassed by anyone outside the project; the
 - Every object is Standard class. No code sets a storage class; no lifecycle rule transitions to Infrequent Access.
 - Lifecycle rules: `bronze/` objects expire after 30 days; incomplete multipart uploads abort after 1 day.
 - Backfill raw responses (about 3 GB) are kept on the developer's disk with their hashes, not uploaded. Only the typed tables built from them go to R2.
-- Delta maintenance: compaction plus `VACUUM` with 7-day retention, scheduled weekly.
+- Delta maintenance: compaction plus `VACUUM` with 7-day retention, scheduled weekly (and daily for the bucket manifest and the run log, which gain one small file per commit; ADR-0019 amendment of 3 November 2026).
 
 **Layer 3: a usage check before every run (fails closed)**
 - `ge_intel.cost_guard` reads month-to-date account usage from Cloudflare's GraphQL Analytics API (`r2OperationsAdaptiveGroups`, `r2StorageAdaptiveGroups`) using a token with Account Analytics Read only.

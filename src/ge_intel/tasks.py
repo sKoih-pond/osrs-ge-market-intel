@@ -26,12 +26,13 @@ from ge_intel.timegrid import DAY, HOUR, floor, iso
 # backfill, which a person starts (`ge-intel run ingest_5m --start --end`); history before
 # go-live lives in its own tables and never reaches this manifest.
 LIVE_GAP_WINDOW = timedelta(days=7)
-# A run starts no new task, and the weekly maintenance no new table, once this long has passed
-# since the run began. The `ge-intel hourly` step times out at 12 minutes (hourly.yml) and the
-# cost guard runs for about a minute first, which leaves about 4 minutes for the last unit of
-# work and the run's record. A run the step timeout kills records nothing, so the next run's
-# guard cannot count its operations: the first full weekly maintenance (26 October 2026)
-# needed about 12 minutes and was killed that way. Work left over continues in the next run.
+# A run starts no new task, and the table maintenance no new step (a table's compaction or its
+# VACUUM), once this long has passed since the run began. The `ge-intel hourly` step times out
+# at 12 minutes (hourly.yml) and the cost guard runs for about a minute first, which leaves
+# about 4 minutes for the last step and the run's record. A run the step timeout kills records
+# nothing, so the next run's guard cannot count its operations: the first full weekly
+# maintenance (26 October 2026) needed about 12 minutes and was killed that way. Work left over
+# continues in the next run; `compact_daily` keeps the slowest step to about a minute.
 RUN_BUDGET = timedelta(minutes=7)
 
 
@@ -67,6 +68,13 @@ REGISTRY: dict[str, Task] = {
         ),
         Task("publish", publish.publish, ("build_snapshot",), "hourly", ()),
         Task("check_duplicates", maintain.check_duplicates, ("ingest_5m",), "daily", ()),
+        Task(
+            "compact_daily",
+            maintain.compact_daily,
+            ("publish", "check_duplicates"),
+            "daily",
+            maintain.DAILY_TABLES,
+        ),
         Task("maintain", maintain.maintain, ("publish", "check_duplicates"), "weekly", ()),
     )
 }
