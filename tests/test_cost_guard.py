@@ -197,3 +197,30 @@ def test_a_maintenance_run_has_its_own_caps():
     assert cg.check_previous_run(usage, maintenance).allowed
     over = cg.Usage(0, 0, 0, LATER, previous_window=(1_001, 100))
     assert not cg.check_previous_run(over, maintenance).allowed
+
+
+def test_previous_window_counts_the_project_bucket_whatever_bucket_storage_lists_last():
+    """Until 3 November 2026 the storage loop reused the name `bucket`, so the window was
+    counted for the last bucket in the storage rows: (0, 3) here, and (0, 0) in about a
+    third of production checks, where the other bucket was idle."""
+    payload = _with_prev(
+        [
+            _ops("ge-intel-lake", "PutObject", 71),
+            _ops("ge-intel-lake", "GetObject", 1_245),
+            _ops("other", "GetObject", 3),
+        ]
+    )
+    payload["data"]["viewer"]["accounts"][0]["storage"] = [  # newest first
+        {
+            "max": {"payloadSize": 2_000, "metadataSize": 0},
+            "dimensions": {"bucketName": "ge-intel-lake"},
+        },
+        {  # an older reading of the same bucket: counted once
+            "max": {"payloadSize": 1_500, "metadataSize": 0},
+            "dimensions": {"bucketName": "ge-intel-lake"},
+        },
+        {"max": {"payloadSize": 10, "metadataSize": 0}, "dimensions": {"bucketName": "other"}},
+    ]
+    u = cg.parse_usage(payload, as_of=LATER, bucket="ge-intel-lake")
+    assert u.previous_window == (71, 1_245)
+    assert (u.storage_bytes, u.storage_buckets) == (2_010, 2)

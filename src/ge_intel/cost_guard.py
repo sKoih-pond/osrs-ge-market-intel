@@ -90,6 +90,8 @@ class Usage:
     as_of: datetime
     # Class A and B operations on the project bucket during the previous run's window.
     previous_window: tuple[int, int] | None = None
+    # Buckets in the storage readings; storage_bytes sums them (the free tier is per account).
+    storage_buckets: int = 0
 
 
 @dataclass(frozen=True)
@@ -266,12 +268,14 @@ def parse_usage(payload: Mapping, as_of: datetime, bucket: str | None = None) ->
             a += row["sum"]["requests"]
         elif cls == "B":
             b += row["sum"]["requests"]
-    # Rows are newest first; take each bucket's latest reading.
+    # Rows are newest first; take each bucket's latest reading. The loop must not reuse the
+    # name `bucket`: until 3 November 2026 it did, so the previous window was counted for
+    # whichever bucket came last in the storage rows (an idle second bucket read (0, 0)).
     latest: dict[str, int] = {}
     for row in acct["storage"]:
-        bucket = row["dimensions"]["bucketName"]
-        if bucket not in latest:
-            latest[bucket] = row["max"]["payloadSize"] + row["max"]["metadataSize"]
+        name = row["dimensions"]["bucketName"]
+        if name not in latest:
+            latest[name] = row["max"]["payloadSize"] + row["max"]["metadataSize"]
     previous = (
         _window_ops(acct["prev"], bucket) if bucket and acct.get("prev") is not None else None
     )
@@ -281,6 +285,7 @@ def parse_usage(payload: Mapping, as_of: datetime, bucket: str | None = None) ->
         storage_bytes=sum(latest.values()),
         as_of=as_of,
         previous_window=previous,
+        storage_buckets=len(latest),
     )
 
 
