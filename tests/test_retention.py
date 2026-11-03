@@ -13,6 +13,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
 from conftest import make_context
+from deltalake import DeltaTable
 
 from ge_intel import history, ingest, lake, maintain, ops, publish, tasks
 from ge_intel.build import SNAPSHOT
@@ -20,7 +21,7 @@ from ge_intel.ingest import LATEST, PRICES
 from ge_intel.lake import content_hash
 from ge_intel.maintain import KEEP_ALL, PROPOSED
 from ge_intel.ops import RUNS_SCHEMA, TASK_RUNS
-from ge_intel.timegrid import FIVE_MIN, HOUR
+from ge_intel.timegrid import DAY, FIVE_MIN, HOUR
 
 END = datetime(2026, 12, 7, tzinfo=UTC)  # a Monday: the weekly run for 30 Nov to 7 Dec
 START = END - timedelta(days=7)
@@ -378,3 +379,85 @@ def test_maintenance_stops_between_tables_when_the_run_is_out_of_time(root):
     assert again["retention"][SNAPSHOT].get("rows_deleted", 0) == 0  # nothing left to do
     assert set(again["tables"]) >= set(maintain.RETAINED)
     assert all("seconds" in t for t in again["tables"].values())
+
+
+def append_runs(lake, n: int) -> None:
+    """Small extra commits on the two tables `compact_daily` looks after."""
+    for k in range(n):
+        at = END + timedelta(minutes=20 * (k + 1))
+        lake.write(
+            ingest.BUCKETS,
+            pa.Table.from_pylist(
+                [{"bucket_start": at, "bucket_date": at.date(), "status": "ok"}],
+                schema=ingest.BUCKETS_SCHEMA,
+            ),
+            mode="append",
+        )
+        row = {
+            "run_id": f"test-{k}",
+            "task": "hourly",
+            "interval_start": END - HOUR,
+            "interval_end": END,
+            "started_at": at,
+            "finished_at": at + timedelta(minutes=3),
+            "status": "success",
+            "detail": "{}",
+        }
+        lake.write(TASK_RUNS, pa.Table.from_pylist([row], schema=RUNS_SCHEMA), mode="append")
+
+
+@pytest.mark.parametrize(
+    ("task", "table", "start"),
+    [("maintain", PRICES, START), ("compact_daily", ingest.BUCKETS, END - DAY)],
+)
+def test_a_deadline_between_compaction_and_vacuum_leaves_the_table_compacted(
+    root, monkeypatch, task, table, start
+):
+    """The time check runs between a table's compaction and its VACUUM too, so the run's last
+    step is one of them, not both (2 November 2026: a week of ops/task_runs took 365 s)."""
+    ctx = make_context(root, now=NOW)
+    append_runs(ctx.lake, 2)
+    vacuumed: list[str] = []
+    real_vacuum = DeltaTable.vacuum
+
+    def spy(self, *args, **kwargs):
+        vacuumed.append(self.table_uri)
+        return real_vacuum(self, *args, **kwargs)
+
+    monkeypatch.setattr(DeltaTable, "vacuum", spy)
+    checks = iter([False, True])  # in time for the first table, out of time after compacting
+    monkeypatch.setattr(ctx, "out_of_time", lambda: next(checks, False))
+    rows: list[dict] = []
+    first = tasks.run_task(ctx, task, start, END, force=False, rows=rows)
+    assert first["status"] == "partial" and list(first["tables"]) == [table]
+    stopped = first["tables"][table]
+    assert stopped["stopped_after"] == "compact" and "vacuumed" not in stopped
+    assert stopped["files_removed"] > 0 and stopped["files"] >= 1
+    assert first["deferred"][0] == table and vacuumed == []
+    ops.flush(ctx.lake, rows)
+    ctx.cache.clear()
+    assert not ops.is_complete(ctx.lake, ctx.cache, task, start, END)
+
+    again = tasks.run_task(ctx, task, start, END, force=False, rows=rows)
+    assert again["status"] == "success" and "deferred" not in again
+    done = again["tables"][table]
+    assert done["files_removed"] == 0 and isinstance(done["vacuumed"], int)
+    assert "stopped_after" not in done and {"compact_s", "vacuum_s", "seconds"} <= set(done)
+    assert len(vacuumed) == len(again["tables"])
+
+
+def test_daily_compaction_touches_only_the_append_tables(root):
+    ctx = make_context(root, now=NOW)
+    append_runs(ctx.lake, 3)
+    others = [PRICES, LATEST, SNAPSHOT]
+    versions = {t: ctx.lake.table(t).version() for t in others}
+    rows: list[dict] = []
+    out = tasks.run_task(ctx, "compact_daily", END - DAY, END, force=False, rows=rows)
+    assert set(out["tables"]) == set(maintain.DAILY_TABLES)
+    assert all(t["files"] == 1 and t["files_removed"] == 4 for t in out["tables"].values())
+    assert {t: ctx.lake.table(t).version() for t in others} == versions
+    json.dumps(out)  # recorded in ops/task_runs
+    ops.flush(ctx.lake, rows)
+    ctx.cache.clear()
+    again = tasks.run_task(ctx, "compact_daily", END - DAY, END, force=False, rows=rows)
+    assert again == {"status": "complete"}

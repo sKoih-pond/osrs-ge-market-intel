@@ -42,6 +42,7 @@ def test_hourly_run_succeeds(run):
         "build_snapshot": "success",
         "publish": "built",  # no deploy outside the scheduled workflow
         "check_duplicates": "success",
+        "compact_daily": "success",
         "maintain": "success",
         "hourly": "success",
     }

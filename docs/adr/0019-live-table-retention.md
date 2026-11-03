@@ -135,7 +135,20 @@ Accepted by Sylvester ("Go with 1", 26 October 2026) after the first weekly run 
 - **Resumable maintenance:** work left over waits for the next run. `maintain` then reports `partial` (`deferred` lists the tables left), the week is not marked done, and the next run carries on; every step is safe to repeat. Each table's `seconds` is logged.
 - **Maintenance allowance:** the previous-run check uses `cost_guard.MAINTENANCE_CAPS`, 1,000 Class A and 15,000 Class B, for a run that worked on the maintenance, whose engine work `RunBudget` does not count. That is about double the measured figures, 0.1% and 0.15% of the monthly free allowance per run; the month-to-date halt is unchanged.
 
-**Still open.** A run killed for another reason (a single unit of work longer than 4 minutes, or a hang) still records nothing; the per-table `seconds` show whether any table comes near that.
+**Still open.** A run killed for another reason (a single unit of work longer than 4 minutes, or a hang) still records nothing; the per-table `seconds` show whether any table comes near that. (2 November: one did, and another came within 80 seconds of it; see the next amendment.)
+
+### Amendment (3 November 2026): daily compaction of the two append tables, and a time check inside a table
+
+Accepted by Sylvester ("Yes go", 3 November 2026) after the second weekly run with the rules on.
+
+**What happened.** On 2 November the maintenance split across two runs as designed, and both ended green, at 9 min 41 s and 10 min 32 s of the 12-minute step. `ops/task_runs` took 365 s (367 files compacted into 1, 312 vacuumed), longer than the 4 minutes the budget leaves for one unit of work, and `silver/wiki_5m_buckets` took 163 s (169 into 1, 145 vacuumed); the others took 19 to 51 s. Both are unpartitioned and gain one small file per commit, so a week of them is one long step that the budget cannot split. Started near the 7-minute mark, `ops/task_runs` would have run past the step timeout.
+
+**Decision.**
+- **Daily compaction:** a daily task, `compact_daily`, runs the same table steps (compaction, VACUUM with 7-day retention in full mode, expired-log clean-up, checkpoint) for `maintain.DAILY_TABLES`, the bucket manifest and the run log, after the daily duplicate check and before the weekly pass. Scaled from 2 November (about a second a file), a day's files take about a minute for the run log and under half a minute for the manifest, so the weekly pass finds both tables small. VACUUM still deletes only files removed more than 7 days ago, so 7-day time travel is unchanged; deletes are free operations.
+- **A time check inside a table:** `maintain` and `compact_daily` check the run's time between a table's compaction and its VACUUM as well as between tables, so the last step a run starts is one of them, not both. A stop after compaction reports `stopped_after: compact` and the table first in `deferred`; the next run compacts it again, which is quick because only the files committed since have to be merged (`ops/task_runs` always gains at least the stopped run's own record), then runs the VACUUM. Each table logs `compact_s` and `vacuum_s`.
+- **Cost:** about 20 to 25 Class A and 110 to 200 Class B operations a day for the two tables (estimate), under 0.1% of the monthly free allowance; each hourly run should read fewer small files from both tables. The daily task adds up to three commits per table to one run a day (compaction, VACUUM start and end), an exception to one commit per table per run that the weekly pass already makes.
+
+**Still open.** A backlog of several days is again one long step. A pause adds none (nothing writes while `hourly` is off or the guard halts it); it builds only when runs keep committing without finishing `compact_daily`, for example when an earlier task fails in every run. The runbook says how to check for one and clear it by hand.
 
 ## Consequences
 
