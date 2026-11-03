@@ -72,6 +72,7 @@ def guard(ctx: Context) -> int:
         class_a=usage.class_a,
         class_b=usage.class_b,
         storage_gb=round(usage.storage_bytes / 1e9, 3),
+        storage_buckets=usage.storage_buckets,
         previous_run=previous.run_id if previous else None,
         previous_window=usage.previous_window,
         reasons=month.reasons + prev.reasons,
