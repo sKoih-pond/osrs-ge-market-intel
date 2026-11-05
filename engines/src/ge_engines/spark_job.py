@@ -333,6 +333,7 @@ def reprocess(
     window_5m_start: datetime = inputs.WINDOW_5M_START,
     repair_months: tuple[str, ...] = inputs.REPAIR_FROM_1H,
     seed: Path = inputs.SEED,
+    first_month: str | None = None,
 ) -> dict:
     files = inputs.month_files(history_dir)
     if not files:
@@ -356,6 +357,10 @@ def reprocess(
         dump = dump_month(spark, files[month])
         if not own:
             return dump
+        # A fill for a bucket the dump holds would count it twice; the history job refuses it.
+        starts = [start for start in fills if m0 <= start < m1]
+        if dump.where(F.col("bucket_epoch").isin(starts)).limit(1).count():
+            raise ValueError(f"{month}: a stored /5m fill is for a bucket the dump holds")
         return dump.unionByName(wiki_rows(spark, own).withColumn("source", F.lit(API_SOURCE)))
 
     plain = [m for m in months if m not in repair_months]
@@ -374,7 +379,7 @@ def reprocess(
         m0, m1 = inputs.month_bounds(month)
         if max(m0, inputs.epoch(window_5m_start)) < min(m1, live):
             raise ValueError(f"{month}: only hourly-only months can be repaired from /1h")
-        first_month = next(iter(files))
+        first_month = first_month or next(iter(files))  # the dump's first month
         first = (
             dump_month(spark, files[first_month]).agg(F.min("bucket_epoch")).first()[0]
             if month == first_month
@@ -419,6 +424,11 @@ def main(argv: list[str] | None = None) -> int:
     run.add_argument("--out", type=Path, default=Path("data/history/spark"))
     run.add_argument("--months", help="comma-separated YYYY-MM (default: every dump month)")
     run.add_argument("--repair-months", help="override the repaired months (tests)")
+    run.add_argument(
+        "--first-month",
+        help="the dump's first month, where repair hours may start late (default: the first "
+        "month on disk; pass it when only some months are on disk)",
+    )
     run.add_argument("--live-start", type=inputs.parse_utc, help="override (tests)")
     run.add_argument("--window-5m-start", type=inputs.parse_utc, help="override (tests)")
     run.add_argument("--threads", type=int, default=4)
@@ -438,6 +448,7 @@ def main(argv: list[str] | None = None) -> int:
             args.months.split(",") if args.months else None,
             live_start=args.live_start or inputs.LIVE_START,
             window_5m_start=args.window_5m_start or inputs.WINDOW_5M_START,
+            first_month=args.first_month,
             repair_months=(
                 tuple(filter(None, args.repair_months.split(",")))
                 if args.repair_months is not None

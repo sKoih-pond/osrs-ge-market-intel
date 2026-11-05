@@ -4,9 +4,11 @@ Two builds of the same months are compared month by month, in layers, all comput
 engine (DuckDB) over both, so the hasher is never the thing under test:
 - counts: rows per month, and against R2 the row counts its Delta log records and the
   `history/months` manifest;
-- a keyed comparison on (hour, item): rows on one side only, volumes, regime and source must
-  match exactly; prices must match exactly, and a price within one rounding step (0.01 GP) is
-  counted as a rounding flip rather than an error, so a flip is reported, never hidden;
+- a keyed comparison on (hour, item): row counts, duplicate keys, rows on one side only,
+  volumes, regime and source must match exactly; prices must match exactly, and two prices on
+  the 0.01 GP grid exactly one step apart (compared in whole cents, so at any price) count as a
+  rounding flip rather than an error: a flip is reported, never hidden, and anything else
+  fails;
 - per-month checksums (volume sums, prices in whole hundredths, an order-independent content
   hash) that any later run can compare without either table.
 
@@ -17,6 +19,7 @@ about one GET per file); nothing here writes to R2.
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import duckdb
@@ -26,9 +29,6 @@ from ge_intel import history
 from ge_intel.lake import Lake
 from ge_intel.maintain import active_files
 
-KEY = "bucket_start, item_id"
-# One rounding step of a price held to 0.01 GP, with float slack.
-ROUNDING_FLIP = 0.0100001
 COLUMNS = (
     "bucket_start",
     "bucket_month",
@@ -94,37 +94,58 @@ def checksums(con, view: str) -> dict[str, dict]:
     }
 
 
+def _side(side: str) -> str:
+    """SQL classifying one price column of a joined row: equal, a rounding flip (both prices on
+    the 0.01 GP grid and exactly one step apart, in whole cents, so it holds at any price), or
+    an error (null on one side only, off the grid, or further apart)."""
+    a, b = f"avg_{side}_price", f"y_{side}"
+    ca, cb = f"round({a} * 100)::BIGINT", f"round({b} * 100)::BIGINT"
+    grid = f"{a} = {ca}::DOUBLE / 100 and {b} = {cb}::DOUBLE / 100"
+    return f"""
+        ({a} is null) <> ({b} is null) as {side}_null_differs,
+        ({a} <> {b} and abs({ca} - {cb}) = 1 and {grid}) as {side}_flip,
+        abs({a} - {b}) as {side}_diff"""
+
+
 def compare_month(con, a: str, b: str, month: str) -> dict:
-    """The keyed comparison of one month of two builds."""
-    out = con.execute(
-        f"""
+    """The keyed comparison of one month of two builds: rows and duplicate keys on each side,
+    keys on one side only, volumes and labels, and each price as equal, a rounding flip or an
+    error."""
+    rows = f"""
         with x as (select * from {a} where bucket_month = $m),
              y as (select * from {b} where bucket_month = $m),
              j as (select x.*, y.item_id as y_item, y.high_volume as y_hv, y.low_volume as y_lv,
-                          y.avg_high_price as y_hp, y.avg_low_price as y_lp,
-                          y.regime_id as y_regime, y.source as y_source, y.bucket_start as y_start
+                          y.avg_high_price as y_high, y.avg_low_price as y_low,
+                          y.regime_id as y_regime, y.source as y_source
                    from x full outer join y
                      on x.bucket_start = y.bucket_start and x.item_id = y.item_id),
-             d as (select *, greatest(coalesce(abs(avg_high_price - y_hp), 0),
-                                      coalesce(abs(avg_low_price - y_lp), 0)) as diff,
-                          ((avg_high_price is null) <> (y_hp is null)
-                           or (avg_low_price is null) <> (y_lp is null)) as null_differs
-                   from j)
-        select count(*) filter (where y_item is null) as only_a,
+             d as (select *, {_side("high")}, {_side("low")},
+                          item_id is not null and y_item is not null as paired
+                   from j),
+             c as (select *,
+                     paired and (high_null_differs or low_null_differs
+                               or (avg_high_price <> y_high and not high_flip)
+                               or (avg_low_price <> y_low and not low_flip)) as price_error,
+                     paired and (high_flip or low_flip) as flipped
+                   from d)
+    """
+    out = con.execute(
+        rows
+        + """
+        select (select count(*) from x) as rows_a, (select count(*) from y) as rows_b,
+               (select count(*) - count(distinct (bucket_start, item_id)) from x) as duplicates_a,
+               (select count(*) - count(distinct (bucket_start, item_id)) from y) as duplicates_b,
+               count(*) filter (where y_item is null) as only_a,
                count(*) filter (where item_id is null) as only_b,
-               count(*) filter (where item_id is not null and y_item is not null
-                                and (high_volume <> y_hv or low_volume <> y_lv)) as volume,
-               count(*) filter (where item_id is not null and y_item is not null
-                                and (regime_id is distinct from y_regime
-                                     or source is distinct from y_source)) as labels,
-               count(*) filter (where item_id is not null and y_item is not null
-                                and not null_differs and diff > 0
-                                and diff <= {ROUNDING_FLIP}) as rounding_flips,
-               count(*) filter (where item_id is not null and y_item is not null
-                                and (null_differs or diff > {ROUNDING_FLIP})) as price_errors,
-               coalesce(max(diff) filter (where item_id is not null and y_item is not null), 0)
-                 as max_price_diff
-        from d
+               count(*) filter (where paired and (high_volume <> y_hv or low_volume <> y_lv))
+                 as volume,
+               count(*) filter (where paired and (regime_id is distinct from y_regime
+                                                or source is distinct from y_source)) as labels,
+               count(*) filter (where flipped and not price_error) as rounding_flips,
+               count(*) filter (where price_error) as price_errors,
+               coalesce(max(greatest(coalesce(high_diff, 0), coalesce(low_diff, 0)))
+                        filter (where paired), 0) as max_price_diff
+        from c
         """,
         {"m": month},
     ).fetchone()
@@ -135,27 +156,18 @@ def compare_month(con, a: str, b: str, month: str) -> dict:
         [
             {"bucket_start": str(r[0]), "item_id": r[1], "source": r[2]}
             for r in con.execute(
-                f"""
-            select x.bucket_start, x.item_id, x.source
-            from {a} x join {b} y on x.bucket_start = y.bucket_start and x.item_id = y.item_id
-            where x.bucket_month = $m and greatest(
-                    coalesce(abs(x.avg_high_price - y.avg_high_price), 0),
-                    coalesce(abs(x.avg_low_price - y.avg_low_price), 0))
-                  between 1e-12 and {ROUNDING_FLIP}
-            order by 1, 2 limit 10
-            """,
+                rows + "select bucket_start, item_id, source from c "
+                "where flipped and not price_error order by 1, 2 limit 10",
                 {"m": month},
             ).fetchall()
         ]
         if found["rounding_flips"]
         else []
     )
-    found["exact"] = not any(
-        found[k] for k in ("only_a", "only_b", "volume", "labels", "rounding_flips", "price_errors")
-    )
-    found["equivalent"] = not any(
-        found[k] for k in ("only_a", "only_b", "volume", "labels", "price_errors")
-    )
+    hard = ("only_a", "only_b", "volume", "labels", "price_errors", "duplicates_a", "duplicates_b")
+    same = found["rows_a"] == found["rows_b"]
+    found["equivalent"] = same and not any(found[k] for k in hard)
+    found["exact"] = found["equivalent"] and not found["rounding_flips"]
     return found
 
 
@@ -166,8 +178,6 @@ def compare(con, a: str, b: str, months: list[str] | None = None) -> dict:
     by_month = {}
     for month in months:
         found = compare_month(con, a, b, month)
-        found["rows_a"] = sums_a.get(month, {}).get("rows", 0)
-        found["rows_b"] = sums_b.get(month, {}).get("rows", 0)
         found["checksums_equal"] = sums_a.get(month) == sums_b.get(month)
         by_month[month] = found
     total = {
@@ -175,6 +185,8 @@ def compare(con, a: str, b: str, months: list[str] | None = None) -> dict:
         for k in (
             "rows_a",
             "rows_b",
+            "duplicates_a",
+            "duplicates_b",
             "only_a",
             "only_b",
             "volume",
@@ -221,6 +233,7 @@ def copy_files(lake: Lake, dest: Path) -> dict:
     import pyarrow.fs as pafs
 
     dt = lake.table(history.PRICES_1H)
+    shutil.rmtree(dest, ignore_errors=True)  # an older copy would be read as duplicate rows
     opts = lake.storage_options or {}
     s3 = pafs.S3FileSystem(
         access_key=opts["AWS_ACCESS_KEY_ID"],
