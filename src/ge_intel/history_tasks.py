@@ -133,13 +133,20 @@ def reprocess_1h(ctx: Context, start: datetime, end: datetime) -> dict:
             os.environ.get("GE_SPARK_MEMORY", "6g"),
             "--local-dir",
             str(h.root / "tmp" / f"spark-{month}"),
+            "--first-month",
+            next(iter(h.month_pins())),
         ],
         capture_output=True,
         text=True,
+        # Spark reads only local disk: it gets no credentials (its jars come from Maven).
+        env={k: v for k, v in os.environ.items() if not k.startswith(("R2_", "CLOUDFLARE_"))},
     )
     if done.returncode != 0:
         raise RuntimeError(f"ge-spark failed ({done.returncode}): {done.stderr[-2000:]}")
     report = json.loads(done.stdout.strip().splitlines()[-1])
+    repaired = report["repaired"].get(month)
+    if repaired is not None and repaired["status"] != "validated":
+        raise RuntimeError(f"{month}: the /1h repair did not run ({repaired})")
     return {
         "month": month,
         "rows": report["rows"],

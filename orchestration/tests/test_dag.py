@@ -67,3 +67,8 @@ def test_the_full_range_is_the_dumps_68_months():
     assert [m["label"] for m in module.months("2026-12-01", "2027-02-01")] == ["2026-12", "2027-01"]
     with pytest.raises(ValueError):
         module.months("2026-01-02", "2026-02-01")
+
+
+def test_only_the_tasks_that_read_r2_load_its_credentials(dag):
+    loads = {t.task_id for t in dag.tasks if "GE_SECRETS" in str(getattr(t, "bash_command", ""))}
+    assert loads == {"cost_guard", "history_pull", "history_r2_check"}

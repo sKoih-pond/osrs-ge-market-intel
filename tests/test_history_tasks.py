@@ -152,3 +152,13 @@ def test_r2_check_and_pull_read_the_published_history(env, tmp_path, monkeypatch
     shutil.rmtree(fresh)
     assert run("history_pull", *early) == 0
     assert not (fresh / "bronze").exists()  # nothing stored before October
+
+
+def test_a_repaired_month_refuses_to_build_without_every_1h_answer(hist, monkeypatch):
+    """`build` leaves such a month unrepaired and unvalidated; a task, which runs after the
+    pull, refuses instead of writing it."""
+    monkeypatch.setattr(history, "REPAIR_FROM_1H", frozenset({"2026-10"}))
+    h = dataclasses.replace(hist, window_5m_start=LIVE)
+    history.build(h)
+    with pytest.raises(history.NotReady, match="/1h answers not on disk"):
+        history.build_hourly(h, "2026-10")

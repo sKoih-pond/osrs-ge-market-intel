@@ -25,6 +25,9 @@ DAG_ID = "ge_history_reprocess"
 FIRST_MONTH, END_MONTH = "2021-03-01", "2026-11-01"  # the dump's 68 months
 POOLS = {"duckdb": "history_duckdb", "spark": "history_spark"}
 RUN = '"$GE_INTEL" run {task} --start {start} --end {end}'
+# The credentials file the runner writes (orchestration/ci/run_airflow.sh); only the tasks that
+# read R2 or its usage load it, so Airflow's processes and the other tasks never hold them.
+SECRETS = 'set -a; . "$GE_SECRETS"; set +a; '
 SPAN = "{{ params.start }}T00:00:00Z", "{{ params.end }}T00:00:00Z"
 RETRIES = {
     "retries": 2,
@@ -55,6 +58,10 @@ def contract(task_name: str, start: str, end: str) -> str:
     return RUN.format(task=task_name, start=start, end=end)
 
 
+def with_secrets(command: str) -> str:
+    return SECRETS + command
+
+
 @dag(
     dag_id=DAG_ID,
     schedule=None,
@@ -71,11 +78,15 @@ def contract(task_name: str, start: str, end: str) -> str:
 )
 def ge_history_reprocess():
     # One month-to-date check of R2 usage before anything reads it; fails closed, no retry.
-    guard = BashOperator(task_id="cost_guard", bash_command='"$GE_INTEL" guard', retries=0)
+    guard = BashOperator(
+        task_id="cost_guard", bash_command=with_secrets('"$GE_INTEL" guard'), retries=0
+    )
     download = BashOperator(
         task_id="history_download", bash_command=contract("history_download", *SPAN)
     )
-    pull = BashOperator(task_id="history_pull", bash_command=contract("history_pull", *SPAN))
+    pull = BashOperator(
+        task_id="history_pull", bash_command=with_secrets(contract("history_pull", *SPAN))
+    )
 
     @task
     def month_list() -> list[dict[str, str]]:
@@ -107,7 +118,7 @@ def ge_history_reprocess():
         [built, rebuilt] >> parity_1h(start, end, label)
 
     r2_check = BashOperator(
-        task_id="history_r2_check", bash_command=contract("history_r2_check", *SPAN)
+        task_id="history_r2_check", bash_command=with_secrets(contract("history_r2_check", *SPAN))
     )
 
     listed = month_list()

@@ -731,6 +731,16 @@ def build_hourly(h: History, month: str) -> dict:
     con = connect(h)
     check_month(con, month, path, h.live_start)
     fills = [f for f in stored(h, "5m").values() if month_of(f.start) == month]
+    if fills:  # as `build` refuses it: the bucket would be counted twice
+        held = {
+            r[0]
+            for r in con.execute(
+                f"select distinct bucket_epoch from ({dump_sql([path])})"
+            ).fetchall()
+        }
+        twice = [iso(f.start) for f in fills if epoch(f.start) in held]
+        if twice:
+            raise RevisionFound(f"{twice[0]} is in the dump and was also fetched")
     detail: list[dict] = []
     repair = None
     if month in REPAIR_FROM_1H:
@@ -739,13 +749,15 @@ def build_hourly(h: History, month: str) -> dict:
             raise ValueError(f"{month}: only hourly-only months can be repaired from /1h")
         hours = repair_hours(month, first_hour(h, con, month, path), h.live_start)
         checks = stored(h, "1h")
-        if all(x in checks for x in hours):
-            tol = ABS_TOL[price_type(con, path)]
+        missing = [x for x in hours if x not in checks]
+        if missing:  # unlike `build`'s first pass, a task runs after the pull: never skip it
+            raise NotReady(f"{month}: {len(missing)} of {len(hours)} /1h answers not on disk")
+        tol = ABS_TOL[price_type(con, path)]
 
-            def repair(t):
-                t, found = repair_from_1h(t, month, {x: checks[x] for x in hours}, tol)
-                detail.extend(found)
-                return t
+        def repair(t):
+            t, found = repair_from_1h(t, month, {x: checks[x] for x in hours}, tol)
+            detail.extend(found)
+            return t
 
     hourly, rows_5m = build_month(h, con, month, path, sha, fills, repair)
     con.close()

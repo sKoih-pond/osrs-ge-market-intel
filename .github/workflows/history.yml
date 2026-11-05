@@ -57,6 +57,9 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+          # Saved from main only: a branch's uv cache (about 2 GB with PySpark built from
+          # source) would crowd the hourly job's out of the repository's 10 GB.
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: uv sync --locked
       # The batch engines (engines/): their own lockfile, so PySpark and Polars stay out of the
       # hourly path's environment.
@@ -176,7 +179,14 @@ jobs:
             --repeat 3 --threads 4 --memory-gb 6
           mkdir -p data/evidence && cp data/bench/results.json data/evidence/benchmark.json
       # Airflow 3 with Postgres on the runner; the DAG's tasks call the contract (`ge-intel run`)
-      # and read R2 only to pull the stored responses and to compare counts. Reads only.
+      # and read R2 only to pull the stored responses and to compare counts. Reads only. The
+      # script moves the credentials into a file only those tasks load, before Airflow starts.
+      # The dump is downloaded by the DAG's own task and not cached from here: one 4.8 GB
+      # entry per branch would fill the repository's cache.
+      # Airflow from its constraints file, in a step with no secrets in reach.
+      - name: Install Airflow 3.3.2
+        if: inputs.step == 'airflow'
+        run: orchestration/ci/install_airflow.sh
       - name: Airflow 3, the history DAG end to end
         if: inputs.step == 'airflow'
         env:

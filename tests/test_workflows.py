@@ -58,3 +58,12 @@ def test_reprocess_and_benchmark_only_read():
     assert "R2_ACCESS_KEY_ID" in parity["env"] and "CLOUDFLARE_ANALYTICS_TOKEN" not in parity["env"]
     doc = load("history.yml")
     assert doc["jobs"]["run"]["runs-on"] == "ubuntu-24.04"  # one image: timings compare
+    assert "env" not in steps()["Install Airflow 3.3.2"]  # third-party installs see no secrets
+
+
+def test_airflow_processes_never_hold_the_credentials():
+    """run_airflow.sh moves them into a file only the R2-reading tasks load, and unsets them
+    before it starts Postgres or any Airflow process (the DAG test checks who loads it)."""
+    script = (WORKFLOWS.parents[1] / "orchestration" / "ci" / "run_airflow.sh").read_text()
+    unset = script.index("unset R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CLOUDFLARE_ANALYTICS_TOKEN")
+    assert unset < script.index("systemctl start postgresql") < script.index('airflow" db migrate')

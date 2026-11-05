@@ -92,25 +92,29 @@ def summarise(tis: list[dict]) -> dict:
 
 
 def screenshot(url: str, target: Path) -> bool:
+    """Optional: a hung or missing Chrome never fails a run that succeeded."""
     chrome = shutil.which("google-chrome") or shutil.which("chromium")
     if not chrome:
         return False
-    subprocess.run(
-        [
-            chrome,
-            "--headless=new",
-            "--no-sandbox",
-            "--disable-gpu",
-            "--hide-scrollbars",
-            "--window-size=1920,1500",
-            "--virtual-time-budget=30000",
-            f"--screenshot={target}",
-            url,
-        ],
-        check=False,
-        timeout=180,
-        capture_output=True,
-    )
+    try:
+        subprocess.run(
+            [
+                chrome,
+                "--headless=new",
+                "--no-sandbox",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--window-size=1920,1500",
+                "--virtual-time-budget=30000",
+                f"--screenshot={target}",
+                url,
+            ],
+            check=False,
+            timeout=180,
+            capture_output=True,
+        )
+    except subprocess.TimeoutExpired:
+        return False
     return target.exists() and target.stat().st_size > 0
 
 
@@ -125,11 +129,17 @@ def main() -> int:
     args.out.mkdir(parents=True, exist_ok=True)
 
     tok = token()
-    wait_for(
-        f"DAG {args.dag} to be parsed",
-        lambda: call("GET", f"/api/v2/dags/{args.dag}", tok).get("dag_id"),
-        600,
-    )
+    try:
+        wait_for(
+            f"DAG {args.dag} to be parsed",
+            lambda: call("GET", f"/api/v2/dags/{args.dag}", tok).get("dag_id"),
+            600,
+        )
+    except TimeoutError:
+        errors = call("GET", "/api/v2/importErrors", token())
+        (args.out / f"{args.label}_import_errors.json").write_text(json.dumps(errors, indent=2))
+        print(json.dumps({"event": "not_parsed", "import_errors": errors}), flush=True)
+        return 1
     run = call(
         "POST",
         f"/api/v2/dags/{args.dag}/dagRuns",
@@ -149,7 +159,10 @@ def main() -> int:
         state = call("GET", path, tok_now)
         return state if state["state"] in ("success", "failed") else None
 
-    final = wait_for(f"run {run_id} to finish", finished, args.timeout, every=20)
+    try:
+        final = wait_for(f"run {run_id} to finish", finished, args.timeout, every=20)
+    except TimeoutError:
+        final = call("GET", path, token())  # keep what there is: the run and its tasks so far
     tok = token()
     tis = task_instances(tok, args.dag, run_id)
     summary = summarise(tis)
@@ -166,6 +179,7 @@ def main() -> int:
         "task_instances": len(tis),
         "tasks": summary,
     }
+    (args.out / f"{args.label}_summary.json").write_text(json.dumps(report, indent=2))
     shot = screenshot(f"{BASE}/dags/{args.dag}/runs/{run_id}", args.out / f"{args.label}_grid.png")
     report["screenshot"] = shot
     (args.out / f"{args.label}_summary.json").write_text(json.dumps(report, indent=2))

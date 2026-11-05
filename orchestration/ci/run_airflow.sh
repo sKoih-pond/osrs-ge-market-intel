@@ -1,28 +1,36 @@
 #!/usr/bin/env bash
 # Airflow 3 on a throwaway GitHub runner, for end-to-end runs of the history DAG on real data
 # (ADR-0004, amended). Called by the `history` workflow's `airflow` step from the repository
-# root, after the project and engine environments are installed.
+# root, after the project and engine environments and Airflow (install_airflow.sh) are in
+# place.
 #
-# Airflow gets its own environment (its constraints file pins pyarrow and importlib-metadata
-# differently from the project's lock); its tasks call the project's `ge-intel` by path. A
-# throwaway Postgres (preinstalled on the image) holds Airflow's metadata, the LocalExecutor
+# A throwaway Postgres (preinstalled on the image) holds Airflow's metadata, the LocalExecutor
 # runs the tasks, and every visitor is an admin: the API server listens on localhost only and
-# the runner is gone when the job ends.
+# the runner is gone when the job ends. The tasks call the project's `ge-intel` by path.
 #
-# Two runs: the full range, then the same range again, which finds every month recorded
-# complete in storage and skips it (the contract's idempotency, seen from Airflow).
+# Two runs: the full range, then the same range again, which must find every month recorded
+# complete in storage and add no run record at all (the contract's idempotency, from Airflow).
 set -euo pipefail
 
-AIRFLOW_VERSION=3.3.2
 REPO=$(pwd)
 OUT="$REPO/data/evidence/airflow"
 VENV="$RUNNER_TEMP/airflow-venv"
 export AIRFLOW_HOME="$RUNNER_TEMP/airflow"
 mkdir -p "$OUT" "$AIRFLOW_HOME"
+# Keep the logs whatever happens: the task logs hold ge-intel's own JSON lines (counts, keys,
+# tracebacks), no prices and no credentials.
+trap 'mkdir -p "$OUT/logs"; cp -r "$AIRFLOW_HOME/logs" "$OUT/logs/tasks" 2>/dev/null; cp "$AIRFLOW_HOME"/*.log "$OUT/logs/" 2>/dev/null; true' EXIT
 
-uv venv -q "$VENV" --python 3.12
-uv pip install -q --python "$VENV/bin/python" "apache-airflow[postgres]==$AIRFLOW_VERSION" \
-  --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-$AIRFLOW_VERSION/constraints-3.12.txt"
+# Credentials go to a file that only the tasks needing them read (the cost guard, the pull and
+# the R2 check): never into Airflow's own processes, its metadata database or other tasks.
+export GE_SECRETS="$RUNNER_TEMP/ge-secrets.env"
+(
+  umask 077
+  for name in CLOUDFLARE_ACCOUNT_ID R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CLOUDFLARE_ANALYTICS_TOKEN; do
+    printf '%s=%q\n' "$name" "${!name:-}"
+  done > "$GE_SECRETS"
+)
+unset R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CLOUDFLARE_ANALYTICS_TOKEN
 
 sudo systemctl start postgresql.service
 sudo -u postgres psql -q -c "create user airflow with password 'airflow'" \
@@ -60,12 +68,21 @@ status=0
 "$VENV/bin/python" orchestration/ci/drive.py --dag ge_history_reprocess --label run2 --out "$OUT" \
   --timeout 3600 || status=$?
 
-# The records the tasks wrote: completion lives in storage, not only in Airflow.
-"$REPO/.venv/bin/python" - "$GE_LAKE_ROOT" > "$OUT/task_runs.json" <<'EOF'
+# The records the tasks wrote: completion lives in storage, not only in Airflow. The second
+# run must have added none.
+"$REPO/.venv/bin/python" - "$GE_LAKE_ROOT" "$OUT" <<'EOF' || status=1
 import json, sys
+from datetime import datetime
+from pathlib import Path
 from deltalake import DeltaTable
-rows = DeltaTable(f"{sys.argv[1]}/ops/task_runs").to_pyarrow_table().to_pylist()
-print(json.dumps(rows, default=str, indent=1))
+lake, out = sys.argv[1], Path(sys.argv[2])
+rows = DeltaTable(f"{lake}/ops/task_runs").to_pyarrow_table().to_pylist()
+(out / "task_runs.json").write_text(json.dumps(rows, default=str, indent=1))
+second = json.loads((out / "run2_run.json").read_text())["start_date"]
+since = datetime.fromisoformat(second.replace("Z", "+00:00"))
+added = [r for r in rows if r["started_at"] >= since]
+(out / "run2_new_task_records.json").write_text(json.dumps({"run2_start": second, "records_added": len(added)}))
+print(json.dumps({"task_records": len(rows), "added_by_run2": len(added)}))
+sys.exit(1 if added else 0)
 EOF
-cp "$AIRFLOW_HOME"/scheduler.log "$OUT/scheduler.log" || true
 exit "$status"
