@@ -41,13 +41,14 @@ def test_secrets_reach_only_the_steps_that_use_r2():
     assert with_secrets
     for step in with_secrets:
         used = ("pull", "push", "upload", "parity")
-        assert any(f"ge-intel history {s}" in step["run"] for s in used)
+        dag = step["run"] == "orchestration/ci/run_airflow.sh"  # its tasks pull and compare
+        assert dag or any(f"ge-intel history {s}" in step["run"] for s in used)
 
 
 def test_reprocess_and_benchmark_only_read():
     """The PySpark rebuild and the benchmark never write to R2 or ask the Wiki (ADR-0011,
     amended): every step they run is theirs or reads, and the writing steps exclude them."""
-    batch = ("reprocess", "benchmark")
+    batch = ("reprocess", "benchmark", "airflow")
     for step in steps().values():
         cond, run = str(step.get("if", "")), step.get("run", "")
         if any(f"ge-intel history {w}" in run for w in ("push", "upload", "check-1h", "fill")):

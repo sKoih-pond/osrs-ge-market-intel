@@ -77,3 +77,26 @@ jobs:
         run: uv run pytest
       - name: PySpark against the DuckDB build
         run: uv run pytest -m spark
+
+  # The history DAG (orchestration/, ADR-0004 amended) imports cleanly and keeps its shape, in
+  # Airflow's own environment and constraints.
+  airflow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      AIRFLOW_HOME: ${{ runner.temp }}/airflow
+      AIRFLOW__CORE__LOAD_EXAMPLES: "False"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+      - name: Install Airflow 3.3.2 with its constraints
+        run: |
+          uv venv "$RUNNER_TEMP/airflow-venv" --python 3.12
+          uv pip install --python "$RUNNER_TEMP/airflow-venv/bin/python" "apache-airflow==3.3.2" \
+            pytest --constraint https://raw.githubusercontent.com/apache/airflow/constraints-3.3.2/constraints-3.12.txt
+      - name: DAG integrity
+        run: '"$RUNNER_TEMP/airflow-venv/bin/python" -m pytest -q -p no:cacheprovider orchestration/tests'

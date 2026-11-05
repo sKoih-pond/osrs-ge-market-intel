@@ -423,9 +423,12 @@ def push_raw(h: History, target: Lake, *, dry_run: bool = False) -> dict:
     return report
 
 
-def pull_raw(h: History, source: Lake) -> dict:
-    """Restore the responses in `history/raw_wiki` to disk. A file already on disk must be
-    byte-identical; a missing one is written with its metadata beside it, as `fetch` wrote it."""
+def pull_raw(
+    h: History, source: Lake, start: datetime | None = None, end: datetime | None = None
+) -> dict:
+    """Restore the responses in `history/raw_wiki` to disk (only buckets in `[start, end)`, if
+    given). A file already on disk must be byte-identical; a missing one is written with its
+    metadata beside it, as `fetch` wrote it."""
     table = source.read(RAW)
     if table is None:
         return {"in_r2": 0, "restored": 0}
@@ -434,6 +437,9 @@ def pull_raw(h: History, source: Lake) -> dict:
         key = row["key"]
         if not key.startswith("bronze/wiki/") or ".." in key.split("/"):
             raise ValueError(f"{RAW} holds an unexpected key {key!r}")
+        bucket = utc(int(key.rsplit("/", 1)[1].split("-", 1)[0]))
+        if (start is not None and bucket < start) or (end is not None and bucket >= end):
+            continue
         if hashlib.sha256(gzip.decompress(row["body_gz"])).hexdigest() != row["sha256"]:
             raise RevisionFound(f"{key} in {RAW} does not hash to its recorded SHA-256")
         path = h.root / key
@@ -698,6 +704,58 @@ def build_month(
         metadata=meta,
     )
     return hourly, rows
+
+
+def first_hour(h: History, con, month: str, path: Path) -> datetime:
+    """Where a repaired month's hours start: its first day, or the dump's first hour when the
+    month is the dump's first (as `build` computes it from every month)."""
+    m0, _ = month_bounds(month)
+    if month != next(iter(h.month_pins())):
+        return m0
+    first = con.execute(f"select min(bucket_epoch) from ({dump_sql([path])})").fetchone()[0]
+    return utc(first)
+
+
+def build_hourly(h: History, month: str) -> dict:
+    """One month of `history/prices_1h` (and its 5-minute rows inside the R2 window) from the
+    inputs on disk, exactly as `build` writes it: the unit a backfill maps over, one month per
+    task (ADR-0004, amended). The manifests (`buckets_5m`, `months`) span months, so only
+    `build` writes them; this checks only the month's own file against its pin."""
+    pin = h.month_pins().get(month)
+    if pin is None:
+        raise ValueError(f"no pinned dump file for {month}")
+    path = kaggle.local_path(h.dump, pin.name)
+    if not path.exists():
+        raise NotReady(f"dump month {month} not downloaded")
+    sha = kaggle.check(path, pin)
+    con = connect(h)
+    check_month(con, month, path, h.live_start)
+    fills = [f for f in stored(h, "5m").values() if month_of(f.start) == month]
+    detail: list[dict] = []
+    repair = None
+    if month in REPAIR_FROM_1H:
+        m0, m1 = month_bounds(month)
+        if max(m0, h.window_5m_start) < min(m1, h.live_start):
+            raise ValueError(f"{month}: only hourly-only months can be repaired from /1h")
+        hours = repair_hours(month, first_hour(h, con, month, path), h.live_start)
+        checks = stored(h, "1h")
+        if all(x in checks for x in hours):
+            tol = ABS_TOL[price_type(con, path)]
+
+            def repair(t):
+                t, found = repair_from_1h(t, month, {x: checks[x] for x in hours}, tol)
+                detail.extend(found)
+                return t
+
+    hourly, rows_5m = build_month(h, con, month, path, sha, fills, repair)
+    con.close()
+    return {
+        "month": month,
+        "rows": hourly.num_rows,
+        "rows_5m": rows_5m,
+        "fill_buckets": len(fills),
+        "replaced": [d["hour"] for d in detail if d.get("replaced")],
+    }
 
 
 def build(h: History, *, dry_run: bool = False) -> dict:
