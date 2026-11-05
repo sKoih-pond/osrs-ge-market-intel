@@ -130,6 +130,26 @@ def compare_month(con, a: str, b: str, month: str) -> dict:
     ).fetchone()
     names = [d[0] for d in con.description]
     found = dict(zip(names, out, strict=True))
+    # Where the flips are (keys and sources, no prices): enough to explain them.
+    found["flip_samples"] = (
+        [
+            {"bucket_start": str(r[0]), "item_id": r[1], "source": r[2]}
+            for r in con.execute(
+                f"""
+            select x.bucket_start, x.item_id, x.source
+            from {a} x join {b} y on x.bucket_start = y.bucket_start and x.item_id = y.item_id
+            where x.bucket_month = $m and greatest(
+                    coalesce(abs(x.avg_high_price - y.avg_high_price), 0),
+                    coalesce(abs(x.avg_low_price - y.avg_low_price), 0))
+                  between 1e-12 and {ROUNDING_FLIP}
+            order by 1, 2 limit 10
+            """,
+                {"m": month},
+            ).fetchall()
+        ]
+        if found["rounding_flips"]
+        else []
+    )
     found["exact"] = not any(
         found[k] for k in ("only_a", "only_b", "volume", "labels", "rounding_flips", "price_errors")
     )

@@ -165,7 +165,15 @@ def parity_1h(ctx: Context, start: datetime, end: datetime) -> dict:
     return {
         "month": month,
         **{
-            k: result[k] for k in ("rows_a", "rows_b", "exact", "rounding_flips", "checksums_equal")
+            k: result[k]
+            for k in (
+                "rows_a",
+                "rows_b",
+                "exact",
+                "rounding_flips",
+                "checksums_equal",
+                "flip_samples",
+            )
         },
     }
 

@@ -83,6 +83,13 @@ def test_a_rounding_flip_alone_is_reported_but_equivalent(tmp_path):
     found = compare(tmp_path, rows(), other)
     assert found["equivalent"] and not found["exact"]
     assert found["totals"]["rounding_flips"] == 1 and not found["checksums_equal"]
+    assert found["by_month"]["2026-01"]["flip_samples"] == [
+        {
+            "bucket_start": "2026-01-01 00:00:00+00:00",
+            "item_id": 2,
+            "source": "kaggle:antonygarand/osrs-ge-5m@v1",
+        }
+    ]
 
 
 def test_run_ties_both_builds_to_r2s_log_and_manifest(tmp_path):
