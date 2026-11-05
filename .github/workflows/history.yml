@@ -176,7 +176,7 @@ jobs:
         run: |
           uv run --project engines ge-bench prep --history-dir data/history --out data/bench
           uv run --project engines ge-bench all --history-dir data/history --out data/bench \
-            --repeat 3 --threads 4 --memory-gb 6
+            --repeat 3 --threads 4 --memory-gb 6 --memory-max 12G
           mkdir -p data/evidence && cp data/bench/results.json data/evidence/benchmark.json
       # Airflow 3 with Postgres on the runner; the DAG's tasks call the contract (`ge-intel run`)
       # and read R2 only to pull the stored responses and to compare counts. Reads only. The
