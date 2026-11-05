@@ -41,13 +41,14 @@ def test_secrets_reach_only_the_steps_that_use_r2():
     assert with_secrets
     for step in with_secrets:
         used = ("pull", "push", "upload", "parity")
-        assert any(f"ge-intel history {s}" in step["run"] for s in used)
+        dag = step["run"] == "orchestration/ci/run_airflow.sh"  # its tasks pull and compare
+        assert dag or any(f"ge-intel history {s}" in step["run"] for s in used)
 
 
 def test_reprocess_and_benchmark_only_read():
     """The PySpark rebuild and the benchmark never write to R2 or ask the Wiki (ADR-0011,
     amended): every step they run is theirs or reads, and the writing steps exclude them."""
-    batch = ("reprocess", "benchmark")
+    batch = ("reprocess", "benchmark", "airflow")
     for step in steps().values():
         cond, run = str(step.get("if", "")), step.get("run", "")
         if any(f"ge-intel history {w}" in run for w in ("push", "upload", "check-1h", "fill")):
@@ -57,3 +58,12 @@ def test_reprocess_and_benchmark_only_read():
     assert "R2_ACCESS_KEY_ID" in parity["env"] and "CLOUDFLARE_ANALYTICS_TOKEN" not in parity["env"]
     doc = load("history.yml")
     assert doc["jobs"]["run"]["runs-on"] == "ubuntu-24.04"  # one image: timings compare
+    assert "env" not in steps()["Install Airflow 3.3.2"]  # third-party installs see no secrets
+
+
+def test_airflow_processes_never_hold_the_credentials():
+    """run_airflow.sh moves them into a file only the R2-reading tasks load, and unsets them
+    before it starts Postgres or any Airflow process (the DAG test checks who loads it)."""
+    script = (WORKFLOWS.parents[1] / "orchestration" / "ci" / "run_airflow.sh").read_text()
+    unset = script.index("unset R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY CLOUDFLARE_ANALYTICS_TOKEN")
+    assert unset < script.index("systemctl start postgresql") < script.index('airflow" db migrate')

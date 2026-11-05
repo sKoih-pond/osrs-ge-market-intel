@@ -8,14 +8,16 @@ name: history
 # runner's disk, runs the chosen step and saves any new responses back to R2. Runbook:
 # "History (M2)". Two steps only read: `reprocess` rebuilds history/prices_1h with PySpark and
 # checks parity with the DuckDB build and with R2 (ADR-0011, amended), and `benchmark` times the
-# same job in DuckDB, Polars and PySpark. Neither writes to R2 or asks the Wiki.
+# same job in DuckDB, Polars and PySpark. `airflow` runs Airflow 3 on the runner and the
+# history DAG end to end, twice (ADR-0004, amended). None of the three writes to R2 or asks the
+# Wiki.
 on:
   workflow_dispatch:
     inputs:
       step:
-        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill, check-and-fill (both, one run), upload, reprocess (PySpark rebuild and parity) or benchmark"
+        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill, check-and-fill (both, one run), upload, reprocess (PySpark rebuild and parity), benchmark or airflow (the history DAG, end to end)"
         type: choice
-        options: [plan, build, check-1h, fill, check-and-fill, upload, reprocess, benchmark]
+        options: [plan, build, check-1h, fill, check-and-fill, upload, reprocess, benchmark, airflow]
         default: plan
       dry_run:
         description: "check-1h, fill, check-and-fill, upload: report only, send and write nothing"
@@ -55,17 +57,20 @@ jobs:
         with:
           python-version: "3.12"
           enable-cache: true
+          # Saved from main only: a branch's uv cache (about 2 GB with PySpark built from
+          # source) would crowd the hourly job's out of the repository's 10 GB.
+          save-cache: ${{ github.ref == 'refs/heads/main' }}
       - run: uv sync --locked
       # The batch engines (engines/): their own lockfile, so PySpark and Polars stay out of the
       # hourly path's environment.
       - name: Set up Java 17
-        if: contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        if: contains(fromJSON('["reprocess", "benchmark", "airflow"]'), inputs.step)
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:
           distribution: temurin
           java-version: "17"
       - name: Install the batch engines
-        if: contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        if: contains(fromJSON('["reprocess", "benchmark", "airflow"]'), inputs.step)
         run: uv sync --locked --project engines
       # Dataset version 1 never changes, and `download` checks every restored file against its
       # pin, so a fixed key is safe.
@@ -75,7 +80,9 @@ jobs:
         with:
           path: data/history/kaggle
           key: kaggle-osrs-ge-5m-v1
+      # The DAG's own tasks pull, download and build for `airflow`.
       - name: Restore raw Wiki responses from R2
+        if: inputs.step != 'airflow'
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
@@ -85,21 +92,21 @@ jobs:
         if: inputs.step == 'plan'
         run: uv run ge-intel history plan
       - name: Download the Kaggle dump
-        if: inputs.step != 'plan'
+        if: inputs.step != 'plan' && inputs.step != 'airflow'
         run: uv run ge-intel history download
       # Cached as soon as it is verified, so a later failure does not cost a second download.
-      - if: inputs.step != 'plan' && steps.dump.outputs.cache-hit != 'true'
+      - if: inputs.step != 'plan' && inputs.step != 'airflow' && steps.dump.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: data/history/kaggle
           key: kaggle-osrs-ge-5m-v1
       - name: Build history/ on the runner
-        if: inputs.step != 'plan'
+        if: inputs.step != 'plan' && inputs.step != 'airflow'
         run: uv run ge-intel history build
       # First downloads record the dump's file hashes in the pins file; they must be committed
       # (a small PR), so they are shown here and in the run summary.
       - name: Kaggle hashes recorded by this run
-        if: always() && inputs.step != 'plan'
+        if: always() && inputs.step != 'plan' && inputs.step != 'airflow'
         run: |
           if ! git diff --quiet -- src/ge_intel/sources/; then
             git diff -- src/ge_intel/sources/
@@ -174,16 +181,33 @@ jobs:
           mkdir -p data/evidence
           cp data/bench/results.json data/evidence/benchmark.json || true  # kept even on failure
           exit "$status"
+      # Airflow from its constraints file, in a step with no secrets in reach.
+      - name: Install Airflow 3.3.2
+        if: inputs.step == 'airflow'
+        run: orchestration/ci/install_airflow.sh
+      # Airflow 3 with Postgres on the runner; the DAG's tasks call the contract (`ge-intel run`)
+      # and read R2 only to pull the stored responses and to compare counts. Reads only. The
+      # script moves the credentials into a file only those tasks load, before Airflow starts.
+      # The dump is downloaded by the DAG's own task and not cached from here: one 4.8 GB
+      # entry per branch would fill the repository's cache.
+      - name: Airflow 3, the history DAG end to end
+        if: inputs.step == 'airflow'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
+        run: orchestration/ci/run_airflow.sh
       # A runner whose memory runs out loses its job with only "The operation was canceled";
       # say so in the log when it happens.
       - name: Memory, if the job failed
-        if: failure() && contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        if: failure() && contains(fromJSON('["reprocess", "benchmark", "airflow"]'), inputs.step)
         run: |
           free -m
           sudo dmesg -T | grep -i -E 'out of memory|killed process|oom' | tail -5 || true
       # Counts, checksums and timings only: no price data leaves the runner.
       - name: Keep the evidence
-        if: always() && contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        if: always() && contains(fromJSON('["reprocess", "benchmark", "airflow"]'), inputs.step)
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: evidence-${{ inputs.step }}-${{ github.run_id }}

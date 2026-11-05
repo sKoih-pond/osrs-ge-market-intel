@@ -23,7 +23,7 @@ import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ge_intel import cost_guard, history, ingest, kaggle, ops, parity, tasks
+from ge_intel import cost_guard, history, history_tasks, ingest, kaggle, ops, parity, tasks
 from ge_intel.cost_guard import RunBudget
 from ge_intel.ingest import Context
 from ge_intel.lake import Lake
@@ -161,7 +161,7 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(prog="ge-intel")
     sub = ap.add_subparsers(dest="cmd", required=True)
     run = sub.add_parser("run", help="run one task for a half-open UTC interval")
-    run.add_argument("task", choices=sorted(tasks.REGISTRY))
+    run.add_argument("task", choices=sorted(tasks.REGISTRY | history_tasks.REGISTRY))
     run.add_argument("--start", required=True, type=parse_utc)
     run.add_argument("--end", required=True, type=parse_utc)
     run.add_argument("--force", action="store_true", help="re-run even if recorded complete")
@@ -198,7 +198,7 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(
                 {
                     n: {"upstream": t.upstream, "cadence": t.cadence, "writes": t.writes}
-                    for n, t in tasks.REGISTRY.items()
+                    for n, t in (tasks.REGISTRY | history_tasks.REGISTRY).items()
                 },
                 indent=2,
             )
@@ -224,15 +224,33 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 0
     if args.cmd == "run":
+        registry = tasks.REGISTRY
+        if args.task in history_tasks.REGISTRY:
+            # History tasks keep their run records on local disk, never in the live lake.
+            if ctx.lake.root.startswith("s3://"):
+                print("history tasks need GE_LAKE_ROOT set to a local directory", file=sys.stderr)
+                return 2
+            registry = history_tasks.REGISTRY
         rows: list[dict] = []
+        code = 0
         try:
-            tasks.run_task(ctx, args.task, args.start, args.end, force=args.force, rows=rows)
+            tasks.run_task(
+                ctx, args.task, args.start, args.end, force=args.force, rows=rows, registry=registry
+            )
         except Exception:
             traceback.print_exc()
-            return 1
+            code = 1
         finally:
             ops.flush(ctx.lake, rows)
-        return 0
+        if registry is history_tasks.REGISTRY and os.environ.get("GE_EXIT_HARD") == "1":
+            # deltalake 1.6.6's bridge into pyarrow datasets can block interpreter shutdown
+            # after a read is done (5 of 6 processes hung on a laptop; 3 of 207 aborted with
+            # SIGABRT on a runner). The run record is committed and the output flushed, so a
+            # task run under Airflow ends here, without finalizers (orchestration/ci).
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(code)
+        return code
     # hourly
     if args.skip_guard:
         if ctx.lake.root.startswith("s3://"):
