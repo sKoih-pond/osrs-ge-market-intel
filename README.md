@@ -4,6 +4,19 @@ A zero-cost data platform that turns 5-minute Grand Exchange trade data into tax
 
 **Status (1 November 2026): M1 live, M2 in progress.** Since 20 October 2026 an hourly GitHub Actions pipeline, started by a Cloudflare cron trigger, has ingested the OSRS Wiki's 5-minute data into Delta tables on Cloudflare R2, built a tax-aware market snapshot with dbt and DuckDB, and published a validated data contract to [kohstack.tech/ge/](https://kohstack.tech/ge/). In M1's seven-day window, 21 to 27 October, all 168 hours were published within 45 minutes of the hour closing (target 95%); [the status page](https://kohstack.tech/ge/status/) shows the current figures. M2 has loaded the history: 68 months from the Kaggle dump, each spot-checked against the Wiki's `/1h` data, are in R2 as about 138 million hourly rows. The rest of M2, including a second source, the 30 September break profile, reconciliation and the completeness report, is planned (`docs/plans/M2.md`).
 
+## At a glance
+
+| | |
+|---|---|
+| Live | The hourly screener at [kohstack.tech/ge/](https://kohstack.tech/ge/) since 20 October 2026; 168 of 168 hours on time in M1's first week |
+| History | 68 months (March 2021 to October 2026) in R2: 138,268,178 hourly rows |
+| Reprocessing | An independent PySpark rebuild of all of it, compared with the DuckDB build and R2: every row, volume and label equal; 7 prices one 0.01 GP rounding step apart |
+| Orchestration | Hourly: GitHub Actions started by a Cloudflare cron. History: an Airflow 3 DAG over the same task contract, one mapped group per month (209 tasks, 58 minutes; a second run finds every month done) |
+| Benchmark | The same 876M-row roll-up on one 4-core runner: Polars 94 s (peaked at 12 GB), DuckDB 166 s (6 GB), PySpark 296 s (7 GB) |
+| Cost | $0: free tiers, and a cost guard that halts at half of R2's free allowance |
+
+Evidence for the last four rows, with run IDs, timings and screenshots: [`docs/evidence/airflow_pyspark.md`](docs/evidence/airflow_pyspark.md).
+
 ## Why this is an interesting data problem
 
 - The Grand Exchange shows no order book. Only volume-weighted trade prices and volumes per 5-minute bucket are public, so whether an offer would fill has to be modelled.
@@ -12,7 +25,7 @@ A zero-cost data platform that turns 5-minute Grand Exchange trade data into tax
 
 ## Architecture
 
-GitHub Actions runs idempotent, Airflow-ready tasks every hour (`ge-intel run <task> --start --end`), writing Delta tables to a private Cloudflare R2 bucket with delta-rs. dbt and DuckDB build the market snapshot; the published data ships as static assets of a Cloudflare Worker at kohstack.tech/ge/, so visitor traffic never touches R2. A cost guard checks R2 usage before every run and fails closed; an independent watchdog opens an issue if data goes stale. PySpark arrives for the backtest grid (M4); after v1 the platform moves to an always-on VM running Airflow 3. Details in `docs/adr/`, the M1 choices in ADR-0016.
+GitHub Actions runs idempotent, Airflow-ready tasks every hour (`ge-intel run <task> --start --end`), writing Delta tables to a private Cloudflare R2 bucket with delta-rs. dbt and DuckDB build the market snapshot; the published data ships as static assets of a Cloudflare Worker at kohstack.tech/ge/, so visitor traffic never touches R2. A cost guard checks R2 usage before every run and fails closed; an independent watchdog opens an issue if data goes stale. PySpark already rebuilds the history independently for a parity check, and an Airflow 3 DAG runs that rebuild on request; the backtest grid follows in M4, and after v1 the hourly path moves to Airflow on an always-on VM. Details in `docs/adr/`, the M1 choices in ADR-0016.
 
 ```
 Wiki API v2 ──> ingest (/5m gap-fill, /latest, /mapping) ──> R2: bronze (raw, 30 days) + silver Delta tables
@@ -41,6 +54,9 @@ Wiki API v2 ──> ingest (/5m gap-fill, /latest, /mapping) ──> R2: bronze 
 | `site/` | The page (`src/`) and the assets-only Worker config |
 | `clock/` | `ge-clock`, the Cloudflare Worker whose Cron Triggers start the hourly run (ADR-0017) |
 | `scripts/` | Fetching raw responses, building fixtures, the exemption seed and the grade derivation |
+| `engines/` | The batch engines, a project of their own: the PySpark rebuild of `history/prices_1h` and the DuckDB, Polars and PySpark benchmark |
+| `orchestration/` | The Airflow 3 history DAG and the harness that runs it on a GitHub runner |
+| `docs/evidence/` | What ran, with run IDs, results and screenshots |
 | `tests/` | Unit, contract (recorded payloads) and end-to-end tests |
 
 ## Development
