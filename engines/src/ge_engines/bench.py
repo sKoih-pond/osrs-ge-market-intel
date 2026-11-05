@@ -11,8 +11,9 @@ one month) is left out, so every engine runs exactly the same work.
 Each run is a fresh process (an engine's start-up is part of what it costs), engines take turns
 so none always runs on a warm page cache, every engine gets the same threads, memory cap and
 spill disk, and a timing counts only if that engine's output matches the others month by
-month. Peak memory is the whole process tree's (the JVM included), sampled every 0.2 s on
-Linux.
+month. Peak memory is the whole process tree's (the JVM included), sampled every 0.5 s on
+Linux. Every engine gets the same memory cap, well under the runner's 16 GB: a runner that runs
+out of memory loses the whole job, not just the engine.
 """
 
 from __future__ import annotations
@@ -291,7 +292,7 @@ def timed(cmd: list[str]) -> tuple[int, float, int | None, str]:
             now = tree_rss_kb(proc.pid)
             if now is not None:
                 peak[0] = max(peak[0] or 0, now)
-            time.sleep(0.2)
+            time.sleep(0.5)
 
     sampler = threading.Thread(target=sample, daemon=True)
     sampler.start()
@@ -397,6 +398,7 @@ def versions() -> dict:
         "pyspark": pyspark.__version__,
         "os": platform.platform(),
         "cpus": os.cpu_count(),
+        "memory_gb": round(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES") / 2**30, 1),
     }
 
 
@@ -409,7 +411,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--out", type=Path, default=Path("data/bench"))
         if name != "prep":
             p.add_argument("--threads", type=int, default=4)
-            p.add_argument("--memory-gb", type=int, default=10)
+            p.add_argument("--memory-gb", type=int, default=6)
         if name == "run":
             p.add_argument("--engine", choices=ENGINES, required=True)
         if name == "all":

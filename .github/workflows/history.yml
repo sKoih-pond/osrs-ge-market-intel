@@ -173,7 +173,7 @@ jobs:
         run: |
           uv run --project engines ge-bench prep --history-dir data/history --out data/bench
           uv run --project engines ge-bench all --history-dir data/history --out data/bench \
-            --repeat 3 --threads 4 --memory-gb 10
+            --repeat 3 --threads 4 --memory-gb 6
           mkdir -p data/evidence && cp data/bench/results.json data/evidence/benchmark.json
       # Airflow 3 with Postgres on the runner; the DAG's tasks call the contract (`ge-intel run`)
       # and read R2 only to pull the stored responses and to compare counts. Reads only.
@@ -185,6 +185,13 @@ jobs:
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
         run: orchestration/ci/run_airflow.sh
+      # A runner whose memory runs out loses its job with only "The operation was canceled";
+      # say so in the log when it happens.
+      - name: Memory, if the job failed
+        if: failure() && contains(fromJSON('["reprocess", "benchmark", "airflow"]'), inputs.step)
+        run: |
+          free -m
+          sudo dmesg -T | grep -i -E 'out of memory|killed process|oom' | tail -5 || true
       # Counts, checksums and timings only: no price data leaves the runner.
       - name: Keep the evidence
         if: always() && contains(fromJSON('["reprocess", "benchmark", "airflow"]'), inputs.step)
