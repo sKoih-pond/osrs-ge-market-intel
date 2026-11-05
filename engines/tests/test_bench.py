@@ -62,7 +62,7 @@ def test_every_engine_writes_the_same_rows(tmp_path):
     root = history_dir(tmp_path)
     out = tmp_path / "bench"
     assert bench.prep(root, out) == {"files": 1, "rows": 29}
-    args = Namespace(history_dir=root, out=out, repeat=1, threads=2, memory_gb=1)
+    args = Namespace(history_dir=root, out=out, repeat=1, threads=2, memory_gb=1, memory_max=None)
     report = bench.run_all(args)
     assert report["all_runs_match"] and all(r["matches_reference"] for r in report["runs"])
     assert report["rows"] == 3 * 39 and [r["engine"] for r in report["runs"]] == list(bench.ENGINES)

@@ -99,6 +99,10 @@ def run_duckdb(files: list[Path], fills: Path, out: Path, threads: int, memory_g
     con.execute(f"SET memory_limit = '{memory_gb}GB'")
     con.execute(f"SET temp_directory = '{_q(tmp)}'")
     con.execute("SET preserve_insertion_order = false")
+    # The aggregate emits every month mixed, so each thread keeps a write buffer open per month:
+    # at the default 524,288 rows that is 68 x 4 buffers of about 40 MB, outside memory_limit,
+    # which took a 16 GB runner down. 100,000 rows keeps them near 2 GB.
+    con.execute("SET partitioned_write_flush_threshold = 100000")
     listed = ", ".join(f"'{_q(f)}'" for f in files)
     con.execute(
         f"""
@@ -282,10 +286,40 @@ def tree_rss_kb(root_pid: int) -> int | None:
     return total
 
 
-def timed(cmd: list[str]) -> tuple[int, float, int | None, str]:
-    """Run `cmd`; its wall time, peak tree RSS (KiB) and last stdout line."""
+def contain(pid: int, name: str, limit: str | None) -> Path | None:
+    """Put a process, and so every process it starts (the JVM included), in a cgroup of its
+    own with a hard memory cap: an engine that runs out of memory is killed alone, not the
+    runner with it. Linux cgroup v2 through sudo, as on a GitHub runner; elsewhere nothing."""
+    root = Path("/sys/fs/cgroup")
+    if not limit or not (root / "cgroup.controllers").exists() or not shutil.which("sudo"):
+        return None
+    group = root / name
+    script = (
+        f"mkdir -p {group} && echo {limit} > {group}/memory.max && "
+        f"echo 0 > {group}/memory.swap.max && echo {pid} > {group}/cgroup.procs"
+    )
+    done = subprocess.run(["sudo", "-n", "sh", "-c", script], capture_output=True)
+    return group if done.returncode == 0 else None
+
+
+def oom_kills(group: Path | None) -> int:
+    if group is None:
+        return 0
+    for line in (group / "memory.events").read_text().splitlines():
+        key, value = line.split()
+        if key == "oom_kill":
+            return int(value)
+    return 0
+
+
+def timed(
+    cmd: list[str], name: str = "ge-bench", limit: str | None = None
+) -> tuple[int, float, int | None, str, bool]:
+    """Run `cmd`, contained (`contain`) when `limit` is given; its exit code, wall time, peak
+    tree RSS (KiB), last stdout line, and whether the kernel killed it for memory."""
     t0 = time.monotonic()
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
+    group = contain(proc.pid, name, limit)
     peak = [None]
 
     def sample():
@@ -300,7 +334,8 @@ def timed(cmd: list[str]) -> tuple[int, float, int | None, str]:
     stdout, _ = proc.communicate()
     sampler.join()
     last = stdout.strip().splitlines()[-1] if stdout.strip() else ""
-    return proc.returncode, round(time.monotonic() - t0, 2), peak[0], last
+    killed = oom_kills(group) > 0
+    return proc.returncode, round(time.monotonic() - t0, 2), peak[0], last, killed
 
 
 def _view(con, name: str, out: Path) -> None:
@@ -436,15 +471,29 @@ def run_all(args) -> dict:
                 "--memory-gb",
                 str(args.memory_gb),
             ]
-            code, wall, peak, last = timed(cmd)
-            if code != 0:
-                raise RuntimeError(f"{engine} run {rep + 1} failed with exit code {code}")
+            name = f"ge-bench-{engine}-{rep + 1}"
+            code, wall, peak, last, killed = timed(cmd, name, args.memory_max)
+            if code != 0:  # a result too: recorded, and the command fails at the end
+                results.append(
+                    {
+                        "engine": engine,
+                        "run": rep + 1,
+                        "wall_s": wall,
+                        "exit_code": code,
+                        "out_of_memory": killed,
+                        "peak_rss_mb": round(peak / 1024) if peak else None,
+                        "matches_reference": False,
+                        "rounding_flips": 0,
+                    }
+                )
+                print(json.dumps({"event": "bench_run_failed", **results[-1]}), flush=True)
+                continue
             inner = json.loads(last)
             produced = out / "out" / engine
             if engine == "duckdb" and not reference.exists():
                 shutil.copytree(produced, reference)  # the first DuckDB output is the reference
-            if not reference.exists():  # rep 0 starts with DuckDB, so this never happens
-                raise RuntimeError("no reference output yet")
+            if not reference.exists():
+                raise RuntimeError("no reference output: the first DuckDB run failed")
             found = compare_outputs(reference, produced, args.memory_gb, out / "tmp" / "compare")
             results.append(
                 {
@@ -469,12 +518,13 @@ def run_all(args) -> dict:
         "runs": results,
         "summary": summary(results),
         "all_runs_match": all(r["matches_reference"] for r in results),
-        "rows": results[0]["comparison"]["rows_ref"],
+        "rows": next((r["comparison"]["rows_ref"] for r in results if "comparison" in r), None),
+        "memory_max": args.memory_max,
     }
     (out / "results.json").write_text(json.dumps(report, indent=2, sort_keys=True))
     if not report["all_runs_match"]:
         bad = [f"{r['engine']} run {r['run']}" for r in results if not r["matches_reference"]]
-        raise RuntimeError(f"outputs differ from the reference: {bad} (see results.json)")
+        raise RuntimeError(f"runs failed or differ from the reference: {bad} (see results.json)")
     return report
 
 
@@ -509,6 +559,10 @@ def main(argv: list[str] | None = None) -> int:
             p.add_argument("--engine", choices=ENGINES, required=True)
         if name == "all":
             p.add_argument("--repeat", type=int, default=3)
+            p.add_argument(
+                "--memory-max",
+                help="hard cap per engine process tree, e.g. 12G (Linux cgroup v2 via sudo)",
+            )
     args = ap.parse_args(argv)
     if args.cmd == "prep":
         result = prep(args.history_dir, args.out)

@@ -169,7 +169,7 @@ jobs:
         run: |
           uv run --project engines ge-bench prep --history-dir data/history --out data/bench
           uv run --project engines ge-bench all --history-dir data/history --out data/bench \
-            --repeat 3 --threads 4 --memory-gb 6
+            --repeat 3 --threads 4 --memory-gb 6 --memory-max 12G
           mkdir -p data/evidence && cp data/bench/results.json data/evidence/benchmark.json
       # A runner whose memory runs out loses its job with only "The operation was canceled";
       # say so in the log when it happens.
