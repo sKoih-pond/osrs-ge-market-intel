@@ -232,16 +232,25 @@ def main(argv: list[str] | None = None) -> int:
                 return 2
             registry = history_tasks.REGISTRY
         rows: list[dict] = []
+        code = 0
         try:
             tasks.run_task(
                 ctx, args.task, args.start, args.end, force=args.force, rows=rows, registry=registry
             )
         except Exception:
             traceback.print_exc()
-            return 1
+            code = 1
         finally:
             ops.flush(ctx.lake, rows)
-        return 0
+        if registry is history_tasks.REGISTRY and os.environ.get("GE_EXIT_HARD") == "1":
+            # deltalake 1.6.6's bridge into pyarrow datasets can block interpreter shutdown
+            # after a read is done (5 of 6 processes hung on a laptop; 3 of 207 aborted with
+            # SIGABRT on a runner). The run record is committed and the output flushed, so a
+            # task run under Airflow ends here, without finalizers (orchestration/ci).
+            sys.stdout.flush()
+            sys.stderr.flush()
+            os._exit(code)
+        return code
     # hourly
     if args.skip_guard:
         if ctx.lake.root.startswith("s3://"):

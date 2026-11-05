@@ -162,3 +162,33 @@ def test_a_repaired_month_refuses_to_build_without_every_1h_answer(hist, monkeyp
     history.build(h)
     with pytest.raises(history.NotReady, match="/1h answers not on disk"):
         history.build_hourly(h, "2026-10")
+
+
+def test_a_task_ended_hard_still_records_its_run(tmp_path):
+    """Under Airflow a history task ends with os._exit once its record is committed
+    (GE_EXIT_HARD, see cli.py); the record and the exit code must survive that."""
+    import os
+    import subprocess
+    import sys
+
+    env = {**os.environ, "GE_LAKE_ROOT": str(tmp_path / "runs"), "GE_EXIT_HARD": "1"}
+    done = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ge_intel.cli",
+            "run",
+            "history_build_1h",
+            "--start",
+            "2026-01-02T00:00:00Z",
+            "--end",
+            "2026-02-01T00:00:00Z",
+        ],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert done.returncode == 1 and "start of a UTC month" in done.stderr
+    runs = local_lake(tmp_path / "runs").read(ops.TASK_RUNS).to_pylist()
+    assert [(r["task"], r["status"]) for r in runs] == [("history_build_1h", "failed")]

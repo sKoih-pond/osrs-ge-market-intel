@@ -54,6 +54,8 @@ export GE_HISTORY_DIR="$REPO/data/history"
 export GE_LAKE_ROOT="$REPO/data/runs"
 export GE_ORCHESTRATOR=airflow
 export GE_SPARK_THREADS=2 GE_SPARK_MEMORY=6g
+# End each task process once its record is committed: see GE_EXIT_HARD in src/ge_intel/cli.py.
+export GE_EXIT_HARD=1
 
 "$VENV/bin/airflow" db migrate > "$AIRFLOW_HOME/migrate.log"
 "$VENV/bin/airflow" pools set history_duckdb 1 "one writer: the DuckDB build of history/prices_1h"
