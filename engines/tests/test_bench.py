@@ -64,5 +64,32 @@ def test_every_engine_writes_the_same_rows(tmp_path):
     assert bench.prep(root, out) == {"files": 1, "rows": 29}
     args = Namespace(history_dir=root, out=out, repeat=1, threads=2, memory_gb=1)
     report = bench.run_all(args)
-    assert report["outputs_match_duckdb"] == {e: True for e in bench.ENGINES}
+    assert report["all_runs_match"] and all(r["matches_reference"] for r in report["runs"])
     assert report["rows"] == 3 * 39 and [r["engine"] for r in report["runs"]] == list(bench.ENGINES)
+    assert set(report["summary"]) == set(bench.ENGINES)
+
+
+def output(path, rows):
+    """A benchmark output: Parquet by month, as the engines write it."""
+    con = duckdb.connect()
+    con.execute("SET TimeZone = 'UTC'")
+    con.execute(
+        "create table t (bucket_start TIMESTAMPTZ, bucket_month VARCHAR, item_id INTEGER, "
+        "avg_high_price DOUBLE, high_volume BIGINT, avg_low_price DOUBLE, low_volume BIGINT, "
+        "regime_id VARCHAR, source VARCHAR)"
+    )
+    con.executemany("insert into t values (?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+    con.execute(f"copy t to '{path}' (format parquet, partition_by (bucket_month))")
+
+
+def test_a_run_that_differs_is_caught_and_a_one_step_flip_is_not(tmp_path):
+    row = ["2026-01-01 00:00:00+00", "2026-01", 2, 100.25, 5, 99.5, 3, "r", "s"]
+    other = [*row[:2], 3, *row[3:]]
+    output(tmp_path / "ref", [row, other])
+    flipped = [*row[:3], 100.26, *row[4:]]
+    output(tmp_path / "flip", [flipped, other])
+    found = bench.compare_outputs(tmp_path / "ref", tmp_path / "flip", 1, tmp_path / "t")
+    assert found["equivalent"] and found["rounding_flips"] == 1
+    output(tmp_path / "dup", [row, other, other])
+    found = bench.compare_outputs(tmp_path / "ref", tmp_path / "dup", 1, tmp_path / "t")
+    assert not found["equivalent"] and found["duplicates"] == 1

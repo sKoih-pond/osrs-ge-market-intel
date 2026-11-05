@@ -83,6 +83,13 @@ def test_a_rounding_flip_alone_is_reported_but_equivalent(tmp_path):
     found = compare(tmp_path, rows(), other)
     assert found["equivalent"] and not found["exact"]
     assert found["totals"]["rounding_flips"] == 1 and not found["checksums_equal"]
+    assert found["by_month"]["2026-01"]["flip_samples"] == [
+        {
+            "bucket_start": "2026-01-01 00:00:00+00:00",
+            "item_id": 2,
+            "source": "kaggle:antonygarand/osrs-ge-5m@v1",
+        }
+    ]
 
 
 def test_run_ties_both_builds_to_r2s_log_and_manifest(tmp_path):
@@ -142,3 +149,30 @@ def test_copied_data_files_read_like_the_table(tmp_path):
     parity.register_delta(con, "tbl", source.uri(history.PRICES_1H))
     parity.register_files(con, "files", files)
     assert parity.compare(con, "tbl", "files")["exact"]
+
+
+def test_a_duplicated_row_fails_even_when_every_key_matches(tmp_path):
+    found = compare(tmp_path, rows(), rows() + [rows()[0]])
+    jan = found["by_month"]["2026-01"]
+    assert (jan["rows_a"], jan["rows_b"], jan["duplicates_b"]) == (9, 10, 1)
+    assert not jan["equivalent"] and not found["equivalent"]
+
+
+def test_flips_are_one_step_in_whole_cents_at_any_price(tmp_path):
+    """Above about 5.4e8 GP two neighbouring cents differ by more than 0.01 as doubles; a
+    one-step flip there is still a flip. A difference off the 0.01 grid is an error however
+    small."""
+    a, b = rows(), rows()
+    for r in (a[0], b[0]):
+        r["avg_high_price"] = 1_534_217_843.27
+    b[0]["avg_high_price"] = 1_534_217_843.28  # one step up, both on the grid
+    b[1]["avg_low_price"] += 0.004  # off the grid: no engine rounding to 0.01 gives this
+    jan = compare(tmp_path, a, b)["by_month"]["2026-01"]
+    assert (jan["rounding_flips"], jan["price_errors"]) == (1, 1)
+    assert jan["flip_samples"] == [
+        {
+            "bucket_start": "2026-01-01 00:00:00+00:00",
+            "item_id": 2,
+            "source": "kaggle:antonygarand/osrs-ge-5m@v1",
+        }
+    ]

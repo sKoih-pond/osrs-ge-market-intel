@@ -10,10 +10,11 @@ one month) is left out, so every engine runs exactly the same work.
 
 Each run is a fresh process (an engine's start-up is part of what it costs), engines take turns
 so none always runs on a warm page cache, every engine gets the same threads, memory cap and
-spill disk, and a timing counts only if that engine's output matches the others month by
-month. Peak memory is the whole process tree's (the JVM included), sampled every 0.5 s on
-Linux. Every engine gets the same memory cap, well under the runner's 16 GB: a runner that runs
-out of memory loses the whole job, not just the engine.
+spill disk, and each run's output is compared with the first DuckDB run's, month by month,
+under the parity rules: summary timings count only runs that match, and any run that does not
+fails the command. Peak memory is the whole process tree's (the JVM included), sampled every
+0.5 s on Linux. Every engine gets the same memory cap, well under the runner's 16 GB: a runner
+that runs out of memory loses the whole job, not just the engine.
 """
 
 from __future__ import annotations
@@ -302,24 +303,110 @@ def timed(cmd: list[str]) -> tuple[int, float, int | None, str]:
     return proc.returncode, round(time.monotonic() - t0, 2), peak[0], last
 
 
-def checksums(out: Path) -> dict[str, list]:
-    """Per month: rows, volume sums, prices in hundredths and a content hash, computed by one
-    engine (DuckDB) over every engine's output."""
+def _view(con, name: str, out: Path) -> None:
+    glob = _q(out / "**" / "*.parquet")
+    con.execute(
+        f"""create or replace view {name} as select * from read_parquet('{glob}',
+            hive_partitioning = true, hive_types = {{'bucket_month': 'VARCHAR'}})"""
+    )
+
+
+def compare_outputs(reference: Path, run: Path, memory_gb: int, tmp: Path) -> dict:
+    """One run's output against the reference (the first DuckDB run), month by month, with
+    the parity rules (ADR-0011, amended): row counts, duplicate keys, keys on one side only,
+    volumes and labels must match; prices must match, and two prices on the 0.01 GP grid one
+    step apart in whole cents are a rounding flip, reported, never a failure."""
     con = duckdb.connect()
     con.execute("SET TimeZone = 'UTC'")
-    glob = _q(out / "**" / "*.parquet")
-    rows = con.execute(
-        f"""
-        select bucket_month, count(*), sum(high_volume)::HUGEINT, sum(low_volume)::HUGEINT,
-               sum(round(avg_high_price * 100))::HUGEINT, sum(round(avg_low_price * 100))::HUGEINT,
-               sum(hash(bucket_start, item_id::INTEGER, avg_high_price, high_volume::BIGINT,
-                        avg_low_price, low_volume::BIGINT, regime_id, source))::HUGEINT
-        from read_parquet('{glob}', hive_partitioning = true,
-                          hive_types = {{'bucket_month': 'VARCHAR'}})
-        group by bucket_month order by bucket_month
-        """
-    ).fetchall()
-    return {r[0]: [str(v) for v in r[1:]] for r in rows}
+    con.execute(f"SET memory_limit = '{memory_gb}GB'")
+    tmp.mkdir(parents=True, exist_ok=True)
+    con.execute(f"SET temp_directory = '{_q(tmp)}'")
+    _view(con, "ref", reference)
+    _view(con, "run", run)
+
+    def side(s: str) -> str:
+        a, b = f"x.avg_{s}_price", f"y.avg_{s}_price"
+        ca, cb = f"round({a} * 100)::BIGINT", f"round({b} * 100)::BIGINT"
+        grid = f"{a} = {ca}::DOUBLE / 100 and {b} = {cb}::DOUBLE / 100"
+        flip = f"({a} <> {b} and abs({ca} - {cb}) = 1 and {grid})"
+        error = f"(({a} is null) <> ({b} is null) or ({a} <> {b} and not {flip}))"
+        return flip, error
+
+    (hf, he), (lf, le) = side("high"), side("low")
+    months = [
+        r[0] for r in con.execute("select distinct bucket_month from ref order by 1").fetchall()
+    ]
+    totals = dict.fromkeys(
+        (
+            "rows_ref",
+            "rows_run",
+            "duplicates",
+            "missing",
+            "extra",
+            "volume",
+            "labels",
+            "rounding_flips",
+            "price_errors",
+        ),
+        0,
+    )
+    for month in months + ["(other)"]:
+        if month == "(other)":
+            cond_x, cond_y = "false", "bucket_month not in (select distinct bucket_month from ref)"
+        else:
+            cond_x = cond_y = f"bucket_month = '{month}'"
+        row = con.execute(
+            f"""
+            with x as (select * from ref where {cond_x}), y as (select * from run where {cond_y}),
+                 j as (select x.*, y.item_id as y_item, {he} as e, {le} as e2, {hf} as f,
+                              {lf} as f2,
+                              x.high_volume <> y.high_volume or x.low_volume <> y.low_volume as v,
+                              x.regime_id is distinct from y.regime_id
+                                or x.source is distinct from y.source as l
+                       from x full outer join y
+                         on x.bucket_start = y.bucket_start and x.item_id = y.item_id)
+            select (select count(*) from x), (select count(*) from y),
+                   (select count(*) - count(distinct (bucket_start, item_id)) from y),
+                   count(*) filter (where y_item is null), count(*) filter (where item_id is null),
+                   count(*) filter (where item_id is not null and y_item is not null and v),
+                   count(*) filter (where item_id is not null and y_item is not null and l),
+                   count(*) filter (where item_id is not null and y_item is not null
+                                    and (f or f2) and not (e or e2)),
+                   count(*) filter (where item_id is not null and y_item is not null and (e or e2))
+            from j
+            """
+        ).fetchone()
+        for k, v in zip(totals, row, strict=True):
+            totals[k] += v
+    hard = ("duplicates", "missing", "extra", "volume", "labels", "price_errors")
+    totals["equivalent"] = totals["rows_ref"] == totals["rows_run"] and not any(
+        totals[k] for k in hard
+    )
+    return totals
+
+
+def summary(results: list[dict]) -> dict:
+    """Per engine, over its matching runs only: the first (cold) run and the median of the
+    rest (warm), wall time, job time and peak memory."""
+    import statistics
+
+    out = {}
+    for engine in ENGINES:
+        runs = [r for r in results if r["engine"] == engine and r["matches_reference"]]
+        if not runs:
+            out[engine] = None
+            continue
+        warm = runs[1:] or runs
+        out[engine] = {
+            "runs_counted": len(runs),
+            "cold_wall_s": runs[0]["wall_s"],
+            "warm_wall_s": statistics.median(r["wall_s"] for r in warm),
+            "warm_job_s": statistics.median(r["job_s"] for r in warm),
+            "startup_s": statistics.median(r["startup_s"] for r in runs),
+            "peak_rss_mb": max((r["peak_rss_mb"] or 0) for r in runs) or None,
+            "rounding_flips": max(r["rounding_flips"] for r in runs),
+        }
+    return out
 
 
 def run_all(args) -> dict:
@@ -327,7 +414,9 @@ def run_all(args) -> dict:
     fills = out / "fills_5m.parquet"
     if not fills.exists():
         raise FileNotFoundError(f"run `ge-bench prep` first ({fills})")
-    results, sums = [], {}
+    reference = out / "reference"
+    shutil.rmtree(reference, ignore_errors=True)
+    results = []
     for rep in range(args.repeat):
         order = ENGINES[rep % 3 :] + ENGINES[: rep % 3]  # each engine goes first once
         for engine in order:
@@ -351,6 +440,12 @@ def run_all(args) -> dict:
             if code != 0:
                 raise RuntimeError(f"{engine} run {rep + 1} failed with exit code {code}")
             inner = json.loads(last)
+            produced = out / "out" / engine
+            if engine == "duckdb" and not reference.exists():
+                shutil.copytree(produced, reference)  # the first DuckDB output is the reference
+            if not reference.exists():  # rep 0 starts with DuckDB, so this never happens
+                raise RuntimeError("no reference output yet")
+            found = compare_outputs(reference, produced, args.memory_gb, out / "tmp" / "compare")
             results.append(
                 {
                     "engine": engine,
@@ -359,16 +454,12 @@ def run_all(args) -> dict:
                     "job_s": inner["job_s"],
                     "startup_s": round(wall - inner["job_s"], 2),
                     "peak_rss_mb": round(peak / 1024) if peak else None,
+                    "matches_reference": found["equivalent"],
+                    "rounding_flips": found["rounding_flips"],
+                    "comparison": found,
                 }
             )
             print(json.dumps({"event": "bench_run", **results[-1]}), flush=True)
-            sums[engine] = checksums(out / "out" / engine)
-    reference = sums["duckdb"]
-    agree = {e: sums[e] == reference for e in ENGINES}
-    differing = {
-        e: sorted(m for m in set(reference) | set(sums[e]) if sums[e].get(m) != reference.get(m))
-        for e in ENGINES
-    }
     report = {
         "job": "68 dump months + stored /5m fills -> hourly Parquet by month (no /1h repair)",
         "threads": args.threads,
@@ -376,12 +467,14 @@ def run_all(args) -> dict:
         "repeat": args.repeat,
         "versions": versions(),
         "runs": results,
-        "outputs_match_duckdb": agree,
-        "months_differing": differing,
-        "months": len(reference),
-        "rows": sum(int(v[0]) for v in reference.values()),
+        "summary": summary(results),
+        "all_runs_match": all(r["matches_reference"] for r in results),
+        "rows": results[0]["comparison"]["rows_ref"],
     }
     (out / "results.json").write_text(json.dumps(report, indent=2, sort_keys=True))
+    if not report["all_runs_match"]:
+        bad = [f"{r['engine']} run {r['run']}" for r in results if not r["matches_reference"]]
+        raise RuntimeError(f"outputs differ from the reference: {bad} (see results.json)")
     return report
 
 
