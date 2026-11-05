@@ -6,14 +6,16 @@ name: history
 # the requester's to schedule. Each run restores the job's raw Wiki responses from R2, takes the
 # pinned Kaggle dump (from the Actions cache after the first run), rebuilds history/ on the
 # runner's disk, runs the chosen step and saves any new responses back to R2. Runbook:
-# "History (M2)".
+# "History (M2)". Two steps only read: `reprocess` rebuilds history/prices_1h with PySpark and
+# checks parity with the DuckDB build and with R2 (ADR-0011, amended), and `benchmark` times the
+# same job in DuckDB, Polars and PySpark. Neither writes to R2 or asks the Wiki.
 on:
   workflow_dispatch:
     inputs:
       step:
-        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill, check-and-fill (both, one run) or upload"
+        description: "plan (no download, nothing sent), build (download and build only), check-1h, fill, check-and-fill (both, one run), upload, reprocess (PySpark rebuild and parity) or benchmark"
         type: choice
-        options: [plan, build, check-1h, fill, check-and-fill, upload]
+        options: [plan, build, check-1h, fill, check-and-fill, upload, reprocess, benchmark]
         default: plan
       dry_run:
         description: "check-1h, fill, check-and-fill, upload: report only, send and write nothing"
@@ -34,7 +36,9 @@ concurrency:
 
 jobs:
   run:
-    runs-on: ubuntu-latest
+    # One image for every run, so benchmark timings compare (ubuntu-latest is moving to 26.04,
+    # whose default Java is 25; Spark is pinned to 17 below).
+    runs-on: ubuntu-24.04
     timeout-minutes: 240
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +56,17 @@ jobs:
           python-version: "3.12"
           enable-cache: true
       - run: uv sync --locked
+      # The batch engines (engines/): their own lockfile, so PySpark and Polars stay out of the
+      # hourly path's environment.
+      - name: Set up Java 17
+        if: contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - name: Install the batch engines
+        if: contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        run: uv sync --locked --project engines
       # Dataset version 1 never changes, and `download` checks every restored file against its
       # pin, so a fixed key is safe.
       - id: dump
@@ -129,3 +144,49 @@ jobs:
           CLOUDFLARE_ANALYTICS_TOKEN: ${{ secrets.CLOUDFLARE_ANALYTICS_TOKEN }}
           DRY: ${{ inputs.dry_run && '--dry-run' || '' }}
         run: uv run ge-intel history upload $DRY
+      # PySpark rebuilds history/prices_1h from the same inputs on disk (ADR-0011, amended): the
+      # dump and the stored responses, never R2 (ADR-0015).
+      - name: Rebuild prices_1h with PySpark
+        if: inputs.step == 'reprocess'
+        run: >-
+          uv run --project engines ge-spark reprocess --history-dir data/history
+          --out data/history/spark --threads 4 --memory 10g --local-dir data/tmp/spark
+          --report data/evidence/spark_report.json
+      # Parity: the PySpark build against this runner's DuckDB build, and both against R2's own
+      # record (its Delta log, the months manifest, and a copy of its files: about one GET each).
+      # Reads only.
+      - name: Parity with the DuckDB build and R2
+        if: inputs.step == 'reprocess'
+        env:
+          CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          uv run ge-intel history parity --r2-files
+          cp data/history/parity.json data/evidence/
+      - name: Benchmark DuckDB, Polars and PySpark
+        if: inputs.step == 'benchmark'
+        run: |
+          uv run --project engines ge-bench prep --history-dir data/history --out data/bench
+          status=0
+          uv run --project engines ge-bench all --history-dir data/history --out data/bench \
+            --repeat 3 --threads 4 --memory-gb 6 --memory-max 12G || status=$?
+          mkdir -p data/evidence
+          cp data/bench/results.json data/evidence/benchmark.json || true  # kept even on failure
+          exit "$status"
+      # A runner whose memory runs out loses its job with only "The operation was canceled";
+      # say so in the log when it happens.
+      - name: Memory, if the job failed
+        if: failure() && contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        run: |
+          free -m
+          sudo dmesg -T | grep -i -E 'out of memory|killed process|oom' | tail -5 || true
+      # Counts, checksums and timings only: no price data leaves the runner.
+      - name: Keep the evidence
+        if: always() && contains(fromJSON('["reprocess", "benchmark"]'), inputs.step)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: evidence-${{ inputs.step }}-${{ github.run_id }}
+          path: data/evidence/
+          retention-days: 90
+          if-no-files-found: warn

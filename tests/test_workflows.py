@@ -40,4 +40,20 @@ def test_secrets_reach_only_the_steps_that_use_r2():
     with_secrets = [s for s in steps().values() if "secrets." in str(s.get("env", {}))]
     assert with_secrets
     for step in with_secrets:
-        assert any(f"ge-intel history {s}" in step["run"] for s in ("pull", "push", "upload"))
+        used = ("pull", "push", "upload", "parity")
+        assert any(f"ge-intel history {s}" in step["run"] for s in used)
+
+
+def test_reprocess_and_benchmark_only_read():
+    """The PySpark rebuild and the benchmark never write to R2 or ask the Wiki (ADR-0011,
+    amended): every step they run is theirs or reads, and the writing steps exclude them."""
+    batch = ("reprocess", "benchmark")
+    for step in steps().values():
+        cond, run = str(step.get("if", "")), step.get("run", "")
+        if any(f"ge-intel history {w}" in run for w in ("push", "upload", "check-1h", "fill")):
+            assert not any(b in cond for b in batch), step.get("name")
+    parity = steps()["Parity with the DuckDB build and R2"]
+    assert parity["if"] == "inputs.step == 'reprocess'" and "--r2" in parity["run"]
+    assert "R2_ACCESS_KEY_ID" in parity["env"] and "CLOUDFLARE_ANALYTICS_TOKEN" not in parity["env"]
+    doc = load("history.yml")
+    assert doc["jobs"]["run"]["runs-on"] == "ubuntu-24.04"  # one image: timings compare
