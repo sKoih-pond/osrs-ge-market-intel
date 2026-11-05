@@ -198,18 +198,29 @@ def vwap(price: str, volume: str) -> Column:
 def rollup(m5: DataFrame, regimes: list[Regime]) -> DataFrame:
     """5-minute rows to hourly: the history job's `build_month` aggregation, column for column.
     Keeps `hour_epoch` for the repair step."""
+    # The source is aggregated as a code (0 the dump, 1 the API): min and max of a string per
+    # group keep a copy of it per group, about 11 GB over the whole history that DuckDB and
+    # Polars cannot spill (the benchmark found it); the labels come back after.
+    code = F.when(F.col("source") == API_SOURCE, 1).otherwise(0)
     hourly = (
         m5.withColumn("hour_epoch", F.col("bucket_epoch") - F.col("bucket_epoch") % HOUR)
+        .withColumn("src", code)
         .groupBy("hour_epoch", "item_id")
         .agg(
             vwap("avg_high_price", "high_volume").alias("avg_high_price"),
             F.sum("high_volume").cast("bigint").alias("high_volume"),
             vwap("avg_low_price", "low_volume").alias("avg_low_price"),
             F.sum("low_volume").cast("bigint").alias("low_volume"),
-            F.when(F.min("source") == F.max("source"), F.min("source"))
-            .otherwise("mixed")
-            .alias("source"),
+            F.min("src").alias("src_min"),
+            F.max("src").alias("src_max"),
         )
+        .withColumn(
+            "source",
+            F.when(F.col("src_min") != F.col("src_max"), "mixed")
+            .when(F.col("src_min") == 1, API_SOURCE)
+            .otherwise(KAGGLE_SOURCE),
+        )
+        .drop("src_min", "src_max")
     )
     return labelled(hourly, regimes)
 

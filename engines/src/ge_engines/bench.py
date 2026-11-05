@@ -111,10 +111,10 @@ def run_duckdb(files: list[Path], fills: Path, out: Path, threads: int, memory_g
             select "timestamp"::BIGINT * 300 as bucket_epoch, itemId::INTEGER as item_id,
                    avgHighPrice::DOUBLE as avg_high_price, highPriceVolume::BIGINT as high_volume,
                    avgLowPrice::DOUBLE as avg_low_price, lowPriceVolume::BIGINT as low_volume,
-                   '{inputs.KAGGLE_SOURCE}' as source
+                   0::TINYINT as src
             from read_parquet([{listed}], union_by_name = true, hive_partitioning = false)
             union all by name
-            select *, '{inputs.API_SOURCE}' as source from read_parquet('{_q(fills)}')
+            select *, 1::TINYINT as src from read_parquet('{_q(fills)}')
           ),
           b as (select *, bucket_epoch - bucket_epoch % 3600 as hour_epoch from m5)
           select to_timestamp(hour_epoch) as bucket_start,
@@ -128,7 +128,9 @@ def run_duckdb(files: list[Path], fills: Path, out: Path, threads: int, memory_g
                    as avg_low_price,
                  sum(low_volume)::BIGINT as low_volume,
                  {regime_case("hour_epoch")} as regime_id,
-                 case when min(source) = max(source) then min(source) else 'mixed' end as source
+                 case when min(src) <> max(src) then 'mixed'
+                      when min(src) = 1 then '{inputs.API_SOURCE}'
+                      else '{inputs.KAGGLE_SOURCE}' end as source
           from b group by hour_epoch, item_id
         ) to '{_q(out)}' (format parquet, partition_by (bucket_month), compression zstd)
         """
@@ -143,7 +145,7 @@ def run_polars(files: list[Path], fills: Path, out: Path, threads: int, memory_g
     os.environ["POLARS_OOC_DISK_BUDGET_MB"] = str(40_000)
     import polars as pl
 
-    def typed(frame, source):
+    def typed(frame, code):
         return frame.select(
             pl.col("bucket_epoch").cast(pl.Int64),
             pl.col("item_id").cast(pl.Int32),
@@ -151,7 +153,7 @@ def run_polars(files: list[Path], fills: Path, out: Path, threads: int, memory_g
             pl.col("high_volume").cast(pl.Int64),
             pl.col("avg_low_price").cast(pl.Float64),
             pl.col("low_volume").cast(pl.Int64),
-            pl.lit(source).alias("source"),
+            pl.lit(code, dtype=pl.Int8).alias("src"),
         )
 
     dump = [
@@ -164,11 +166,11 @@ def run_polars(files: list[Path], fills: Path, out: Path, threads: int, memory_g
                 pl.col("avgLowPrice").alias("avg_low_price"),
                 pl.col("lowPriceVolume").alias("low_volume"),
             ),
-            inputs.KAGGLE_SOURCE,
+            0,
         )
         for f in files
     ]
-    m5 = pl.concat([*dump, typed(pl.scan_parquet(fills), inputs.API_SOURCE)])
+    m5 = pl.concat([*dump, typed(pl.scan_parquet(fills), 1)])
 
     def vwap(price: str, volume: str):
         priced = pl.col(price).is_not_null()
@@ -197,9 +199,11 @@ def run_polars(files: list[Path], fills: Path, out: Path, threads: int, memory_g
             pl.col("high_volume").sum().alias("high_volume"),
             vwap("avg_low_price", "low_volume").alias("avg_low_price"),
             pl.col("low_volume").sum().alias("low_volume"),
-            pl.when(pl.col("source").min() == pl.col("source").max())
-            .then(pl.col("source").min())
-            .otherwise(pl.lit("mixed"))
+            pl.when(pl.col("src").min() != pl.col("src").max())
+            .then(pl.lit("mixed"))
+            .when(pl.col("src").min() == 1)
+            .then(pl.lit(inputs.API_SOURCE))
+            .otherwise(pl.lit(inputs.KAGGLE_SOURCE))
             .alias("source"),
         )
         .select(
@@ -492,9 +496,11 @@ def run_all(args) -> dict:
             produced = out / "out" / engine
             if engine == "duckdb" and not reference.exists():
                 shutil.copytree(produced, reference)  # the first DuckDB output is the reference
-            if not reference.exists():
-                raise RuntimeError("no reference output: the first DuckDB run failed")
-            found = compare_outputs(reference, produced, args.memory_gb, out / "tmp" / "compare")
+            found = (
+                compare_outputs(reference, produced, args.memory_gb, out / "tmp" / "compare")
+                if reference.exists()
+                else {"equivalent": False, "rounding_flips": 0, "rows_ref": None}  # no reference
+            )
             results.append(
                 {
                     "engine": engine,

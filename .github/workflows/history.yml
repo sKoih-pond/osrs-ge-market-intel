@@ -175,18 +175,21 @@ jobs:
         if: inputs.step == 'benchmark'
         run: |
           uv run --project engines ge-bench prep --history-dir data/history --out data/bench
+          status=0
           uv run --project engines ge-bench all --history-dir data/history --out data/bench \
-            --repeat 3 --threads 4 --memory-gb 6 --memory-max 12G
-          mkdir -p data/evidence && cp data/bench/results.json data/evidence/benchmark.json
+            --repeat 3 --threads 4 --memory-gb 6 --memory-max 12G || status=$?
+          mkdir -p data/evidence
+          cp data/bench/results.json data/evidence/benchmark.json || true  # kept even on failure
+          exit "$status"
+      # Airflow from its constraints file, in a step with no secrets in reach.
+      - name: Install Airflow 3.3.2
+        if: inputs.step == 'airflow'
+        run: orchestration/ci/install_airflow.sh
       # Airflow 3 with Postgres on the runner; the DAG's tasks call the contract (`ge-intel run`)
       # and read R2 only to pull the stored responses and to compare counts. Reads only. The
       # script moves the credentials into a file only those tasks load, before Airflow starts.
       # The dump is downloaded by the DAG's own task and not cached from here: one 4.8 GB
       # entry per branch would fill the repository's cache.
-      # Airflow from its constraints file, in a step with no secrets in reach.
-      - name: Install Airflow 3.3.2
-        if: inputs.step == 'airflow'
-        run: orchestration/ci/install_airflow.sh
       - name: Airflow 3, the history DAG end to end
         if: inputs.step == 'airflow'
         env:
