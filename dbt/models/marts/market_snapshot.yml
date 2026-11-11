@@ -37,3 +37,10 @@ models:
                 values: [A, B, C]
       - name: data_grade_reason
         tests: [not_null]
+      - name: is_idea
+        description: >
+          Grade A or B with a positive net GP, on an item that can be re-sold as bought (not in
+          the not_flippable seed, ADR-0008). Null for a grade A or B row without a positive net
+          GP; always false for a not_flippable item.
+      - name: idea_rank
+        description: 1 for the largest net GP among ideas (ties by item id); null for non-ideas.

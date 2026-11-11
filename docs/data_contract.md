@@ -13,7 +13,7 @@ Conventions: prices and amounts are whole GP (integers); times are UTC, ISO 8601
 
 One closed hour (`data_as_of` is its end, exclusive) under one execution policy (`policy`, casual-v1 in M1).
 
-- `ideas`: at most 100, ranked by `net_gp` (net margin after tax times feasible quantity, ADR-0008). Only grade A or B data, positive net margin and a feasible quantity of at least 1. Each idea carries the inputs behind its numbers: the price window, last trade times, volumes, the Data grade and its one-line reason.
+- `ideas`: at most 100, ranked by `net_gp` (net margin after tax times feasible quantity, ADR-0008). Only grade A or B data, positive net margin and a feasible quantity of at least 1. Items that cannot be bought and re-sold as bought (`src/ge_intel/seeds/not_flippable.csv`, today the Old school bond) are never ideas (ADR-0008 amendment). Each idea carries the inputs behind its numbers: the price window, last trade times, volumes, the Data grade and its one-line reason.
 - `counts`: how many items were priced, how many cleared the tax with sound data, and `withheld_grade_c_with_margin`, the items that showed a margin but whose data was grade C.
 - `tax`, `data_grade`: the rule and thresholds in force, so a reader can check any number.
 - `attribution`, `licence`: the data is CC BY-NC-SA 3.0 (ADR-0013).

@@ -1,5 +1,6 @@
 -- Market snapshot for one hour under one execution policy (ADR-0008), with the Data grade
--- (ADR-0009). One row per item that traded on either side in the trailing 24 hours.
+-- (ADR-0009). One row per item that traded on either side in the trailing 24 hours; is_idea
+-- and idea_rank mark the rows the screener may publish.
 {% set p = var('policy') %}
 {% set g = var('grade') %}
 {% set snap = "timestamptz '" ~ var('snapshot_at') ~ "'" %}
@@ -147,7 +148,8 @@ limited as (
             when feasible_quantity = qty_cap_volume then 'volume'
             when feasible_quantity = buy_limit then 'buy_limit'
             when feasible_quantity is not null then 'capital'
-        end as quantity_limited_by
+        end as quantity_limited_by,
+        case when net_margin > 0 and feasible_quantity > 0 then net_margin * feasible_quantity end as net_gp
     from feasible
 ),
 
@@ -171,6 +173,14 @@ graded as (
         end as data_grade
     from limited f
     cross join window_health h
+),
+
+ideas as (  -- grade A or B with a positive net GP, on an item that can be re-sold as bought
+    select
+        g.*,
+        g.data_grade in ('A', 'B') and g.net_gp > 0 and n.item_id is null as is_idea
+    from graded g
+    left join {{ ref('not_flippable') }} n using (item_id)
 )
 
 select
@@ -199,7 +209,7 @@ select
     qty_cap_volume,
     cast(feasible_quantity as bigint) as feasible_quantity,
     quantity_limited_by,
-    case when net_margin > 0 and feasible_quantity > 0 then cast(net_margin * feasible_quantity as bigint) end as net_gp,
+    cast(net_gp as bigint) as net_gp,
     cast(two_sided_hours_24h as integer) as two_sided_hours_24h,
     price_deviation_pct,
     cast(buckets_ok_24h as integer) as buckets_ok_24h,
@@ -231,5 +241,10 @@ select
         when minutes_since_trade is null then 'time of last trade unknown'
         else 'last trade ' || minutes_since_trade || ' min before publication (grade A needs '
             || {{ g['a_max_minutes_since_trade'] }} || ' or fewer)'
-    end as data_grade_reason
-from graded
+    end as data_grade_reason,
+    -- Null for a grade A or B row without a positive net GP (ADR-0019 relies on it); always
+    -- false for an item in the not_flippable seed, whose row and Data grade stay (ADR-0008).
+    cast(is_idea as boolean) as is_idea,
+    cast(case when is_idea then row_number() over (partition by is_idea order by net_gp desc, item_id)
+        end as bigint) as idea_rank
+from ideas

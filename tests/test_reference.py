@@ -56,6 +56,15 @@ def test_seed_rows_are_unique_and_sourced():
     assert {r["exempt_from"] for r in rows} == {"2021-12-09", "2025-05-29"}
 
 
+def test_not_flippable_seed_is_unique_sourced_and_holds_the_bond():
+    with (SEEDS / "not_flippable.csv").open() as fh:
+        rows = list(csv.DictReader(fh))
+    assert len({r["item_id"] for r in rows}) == len(rows)
+    assert all(r["reason"] for r in rows)
+    assert all(r["source_url"].startswith("https://oldschool.runescape.wiki/") for r in rows)
+    assert {r["item_id"]: r["item_name"] for r in rows}["13190"] == "Old school bond"
+
+
 def test_measurement_regime_switches_on_30_september_2026():
     assert (
         regime_at("measurement", datetime(2026, 9, 29, 23, 55, tzinfo=UTC))
