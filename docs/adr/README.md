@@ -13,7 +13,7 @@ Status values: **Accepted**, **Accepted, pending spike** (holds unless the named
 | [0005](0005-ingestion-grain-backfill-etiquette.md) | Ingestion grain, backfill scope and API etiquette | Accepted, amended by 0015, 0016 and 0018 |
 | [0006](0006-regimes-as-data.md) | Market and measurement regimes as first-class data | Accepted |
 | [0007](0007-tax-model.md) | Grand Exchange tax model | Accepted (exemption seed built in M1) |
-| [0008](0008-execution-policies.md) | Execution policies: Flipper, Casual, Holder | Accepted (parameters provisional until M4) |
+| [0008](0008-execution-policies.md) | Execution policies: Flipper, Casual, Holder | Accepted (parameters provisional until M4); amended 12 November 2026 (items that cannot be re-sold as bought are never ideas) |
 | [0009](0009-reliability-dimensions.md) | Reliability shown as separate, evidenced dimensions | Accepted, amended by 0016 (Data grade v2) |
 | [0010](0010-ml-promotion-gate.md) | Pre-registered ML promotion gate | Accepted |
 | [0011](0011-spark-scope.md) | Spark scope: backtest grid and reprocessing only | Accepted, amended by 0015 |
