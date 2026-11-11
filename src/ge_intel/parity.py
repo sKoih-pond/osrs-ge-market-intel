@@ -10,7 +10,8 @@ engine (DuckDB) over both, so the hasher is never the thing under test:
   rounding flip rather than an error: a flip is reported, never hidden, and anything else
   fails;
 - per-month checksums (volume sums, prices in whole hundredths, an order-independent content
-  hash) that any later run can compare without either table.
+  hash) that any later run can compare without either table, and that back the keyed
+  comparison: a month it calls exact must checksum equal, or the month fails.
 
 The builds are read from Delta tables (local, or R2's own files copied to the runner once:
 about one GET per file); nothing here writes to R2.
@@ -97,13 +98,16 @@ def checksums(con, view: str) -> dict[str, dict]:
 def _side(side: str) -> str:
     """SQL classifying one price column of a joined row: equal, a rounding flip (both prices on
     the 0.01 GP grid and exactly one step apart, in whole cents, so it holds at any price), or
-    an error (null on one side only, off the grid, or further apart)."""
+    an error (null on one side only, off the grid, or further apart). Every flag is true or
+    false, never null: a price empty in both builds (no trades on that side) must not turn the
+    row's other checks null, which a count's filter would drop."""
     a, b = f"avg_{side}_price", f"y_{side}"
     ca, cb = f"round({a} * 100)::BIGINT", f"round({b} * 100)::BIGINT"
     grid = f"{a} = {ca}::DOUBLE / 100 and {b} = {cb}::DOUBLE / 100"
     return f"""
         ({a} is null) <> ({b} is null) as {side}_null_differs,
-        ({a} <> {b} and abs({ca} - {cb}) = 1 and {grid}) as {side}_flip,
+        coalesce({a} <> {b} and abs({ca} - {cb}) = 1 and {grid}, false) as {side}_flip,
+        {a} is distinct from {b} as {side}_differs,
         abs({a} - {b}) as {side}_diff"""
 
 
@@ -124,8 +128,8 @@ def compare_month(con, a: str, b: str, month: str) -> dict:
                    from j),
              c as (select *,
                      paired and (high_null_differs or low_null_differs
-                               or (avg_high_price <> y_high and not high_flip)
-                               or (avg_low_price <> y_low and not low_flip)) as price_error,
+                               or (high_differs and not high_flip)
+                               or (low_differs and not low_flip)) as price_error,
                      paired and (high_flip or low_flip) as flipped
                    from d)
     """
@@ -137,7 +141,8 @@ def compare_month(con, a: str, b: str, month: str) -> dict:
                (select count(*) - count(distinct (bucket_start, item_id)) from y) as duplicates_b,
                count(*) filter (where y_item is null) as only_a,
                count(*) filter (where item_id is null) as only_b,
-               count(*) filter (where paired and (high_volume <> y_hv or low_volume <> y_lv))
+               count(*) filter (where paired and (high_volume is distinct from y_hv
+                                                or low_volume is distinct from y_lv))
                  as volume,
                count(*) filter (where paired and (regime_id is distinct from y_regime
                                                 or source is distinct from y_source)) as labels,
@@ -179,6 +184,11 @@ def compare(con, a: str, b: str, months: list[str] | None = None) -> dict:
     for month in months:
         found = compare_month(con, a, b, month)
         found["checksums_equal"] = sums_a.get(month) == sums_b.get(month)
+        # The checksums are computed apart from the keyed comparison: a month it calls exact
+        # must checksum equal, or the comparison missed a difference, and the month fails.
+        found["unexplained"] = found["exact"] and not found["checksums_equal"]
+        if found["unexplained"]:
+            found["equivalent"] = found["exact"] = False
         by_month[month] = found
     total = {
         k: sum(m[k] for m in by_month.values())
@@ -203,6 +213,7 @@ def compare(con, a: str, b: str, months: list[str] | None = None) -> dict:
         "totals": total,
         "max_price_diff": max((m["max_price_diff"] for m in by_month.values()), default=0),
         "months_not_exact": [m for m, v in by_month.items() if not v["exact"]],
+        "months_unexplained": [m for m, v in by_month.items() if v["unexplained"]],
         "by_month": by_month,
         "checksums": sums_a,
     }
