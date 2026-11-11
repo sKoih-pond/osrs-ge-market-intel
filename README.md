@@ -10,9 +10,9 @@ A zero-cost data platform that turns 5-minute Grand Exchange trade data into tax
 |---|---|
 | Live | The hourly screener at [kohstack.tech/ge/](https://kohstack.tech/ge/) since 20 October 2026; 168 of 168 hours on time in M1's first week |
 | History | 68 months (March 2021 to October 2026) in R2: 138,268,178 hourly rows |
-| Reprocessing | An independent PySpark rebuild of all of it, compared with the DuckDB build and R2: every row, volume and label equal; 7 prices one 0.01 GP rounding step apart |
+| Reprocessing | An independent PySpark rebuild of all of it, compared with the DuckDB build and R2: every row, volume and label equal; 8 prices one 0.01 GP rounding step apart |
 | Orchestration | Hourly: GitHub Actions started by a Cloudflare cron. History: an Airflow 3 DAG over the same task contract, one mapped group per month (209 tasks, 58 minutes; a second run finds every month done) |
-| Benchmark | The same 876M-row roll-up on one 4-core runner: Polars 94 s (peaked at 12 GB), DuckDB 166 s (6 GB), PySpark 296 s (7 GB) |
+| Benchmark | The same 878M-row roll-up on one 4-core runner: Polars 94 s (peaked at 12 GB), DuckDB 166 s (6 GB), PySpark 296 s (7 GB) |
 | Cost | $0: free tiers, and a cost guard that halts at half of R2's free allowance |
 
 Evidence for the last four rows, with run IDs, timings and screenshots: [`docs/evidence/airflow_pyspark.md`](docs/evidence/airflow_pyspark.md).
@@ -79,7 +79,7 @@ Operating the scheduled pipeline: `docs/runbook.md`.
 
 ## Data and attribution
 
-Price data: OSRS Wiki real-time prices API (RuneLite data before 30 September 2026, Jagex data after) and Weird Gloop exchange history. OSRS Wiki content is licensed CC BY-NC-SA 3.0. This project is non-commercial, shows no real-money values, and does not automate the game client in any way.
+Price data: OSRS Wiki real-time prices API (RuneLite data before 30 September 2026, Jagex data after). History before live collection began on 18 October 2026 comes from the Kaggle dataset [`antonygarand/osrs-ge-5m`](https://www.kaggle.com/datasets/antonygarand/osrs-ge-5m) (version 1, by Antony Garand), collected from the same API. Weird Gloop's exchange history is planned (M2). OSRS Wiki content and the dataset are licensed CC BY-NC-SA 3.0. This project is non-commercial, shows no real-money values, and does not automate the game client in any way.
 
 ## Licence
 
