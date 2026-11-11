@@ -79,7 +79,7 @@ Operating the scheduled pipeline: `docs/runbook.md`.
 
 ## Data and attribution
 
-Price data: OSRS Wiki real-time prices API (RuneLite data before 30 September 2026, Jagex data after). History before live collection began on 18 October 2026 comes from the Kaggle dataset [`antonygarand/osrs-ge-5m`](https://www.kaggle.com/datasets/antonygarand/osrs-ge-5m) (version 1, by Antony Garand), collected from the same API. Weird Gloop's exchange history is planned (M2). OSRS Wiki content and the dataset are licensed CC BY-NC-SA 3.0. This project is non-commercial, shows no real-money values, and does not automate the game client in any way.
+Price data: OSRS Wiki real-time prices API (RuneLite data before 30 September 2026, Jagex data after). History before live collection began on 18 October 2026 comes from the Kaggle dataset [`antonygarand/osrs-ge-5m`](https://www.kaggle.com/datasets/antonygarand/osrs-ge-5m) (version 1, by Antony Garand), collected from the same API. Weird Gloop's exchange history is planned (M2). OSRS Wiki content is licensed CC BY-NC-SA 3.0, and the dataset, derived from it, is used on the same terms. This project is non-commercial, shows no real-money values, and does not automate the game client in any way.
 
 ## Licence
 
