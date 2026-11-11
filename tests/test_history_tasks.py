@@ -164,6 +164,31 @@ def test_a_repaired_month_refuses_to_build_without_every_1h_answer(hist, monkeyp
         history.build_hourly(h, "2026-10")
 
 
+def test_the_guard_ends_hard_only_when_asked(tmp_path, monkeypatch):
+    """The cost guard reads the run records through deltalake too, so under Airflow it ends
+    hard as well; without GE_EXIT_HARD (the hourly path) it returns as before."""
+    import os
+    import subprocess
+    import sys
+
+    from ge_intel import cli
+
+    for name in ("CLOUDFLARE_ACCOUNT_ID", "CLOUDFLARE_ANALYTICS_TOKEN", "GE_EXIT_HARD"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("GE_LAKE_ROOT", str(tmp_path / "runs"))
+    assert cli.main(["guard"]) == 2  # fails closed without credentials, and returns
+
+    env = {**os.environ, "GE_EXIT_HARD": "1"}
+    done = subprocess.run(
+        [sys.executable, "-m", "ge_intel.cli", "guard"],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert done.returncode == 2 and "analytics credentials not set" in done.stdout
+
+
 def test_a_task_ended_hard_still_records_its_run(tmp_path):
     """Under Airflow a history task ends with os._exit once its record is committed
     (GE_EXIT_HARD, see cli.py); the record and the exit code must survive that."""

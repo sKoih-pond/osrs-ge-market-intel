@@ -43,6 +43,16 @@ HISTORY_STEPS = (
 )
 
 
+def exit_hard(code: int) -> None:
+    """End the process now, without finalizers. deltalake 1.6.6's bridge into pyarrow datasets
+    can block interpreter shutdown after a read is done (5 of 6 processes hung on a laptop; 3 of
+    207 aborted with SIGABRT on a runner). Under Airflow (GE_EXIT_HARD=1, orchestration/ci) a
+    process whose record is committed and output flushed ends here instead."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    os._exit(code)
+
+
 def context(budget: RunBudget | None = None) -> Context:
     budget = budget or RunBudget()
     return Context(
@@ -207,7 +217,10 @@ def main(argv: list[str] | None = None) -> int:
 
     ctx = context()
     if args.cmd == "guard":
-        return guard(ctx)
+        code = guard(ctx)
+        if os.environ.get("GE_EXIT_HARD") == "1":  # it read the run records through deltalake
+            exit_hard(code)
+        return code
     if args.cmd == "gaps":
         end = args.end or tasks.newest_closed_hour(datetime.now(UTC))
         start = args.start or tasks.interval_for(ctx, tasks.REGISTRY["ingest_5m"], end)[0]
@@ -243,13 +256,7 @@ def main(argv: list[str] | None = None) -> int:
         finally:
             ops.flush(ctx.lake, rows)
         if registry is history_tasks.REGISTRY and os.environ.get("GE_EXIT_HARD") == "1":
-            # deltalake 1.6.6's bridge into pyarrow datasets can block interpreter shutdown
-            # after a read is done (5 of 6 processes hung on a laptop; 3 of 207 aborted with
-            # SIGABRT on a runner). The run record is committed and the output flushed, so a
-            # task run under Airflow ends here, without finalizers (orchestration/ci).
-            sys.stdout.flush()
-            sys.stderr.flush()
-            os._exit(code)
+            exit_hard(code)  # the run record is committed
         return code
     # hourly
     if args.skip_guard:
