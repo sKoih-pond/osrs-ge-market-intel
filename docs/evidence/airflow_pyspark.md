@@ -123,8 +123,10 @@ Monthly parity under Airflow: 67 months exact; 2026-10 equivalent with 7 roundin
 | Stop-and-review line (plan) | 1,000 | 10,000 |
 | Measured: every operation on the bucket from 01:27 to 08:07 UTC, production's hourly runs included | 587 | 5,699 |
 | Measured: the same, less the hourly runs' own guard windows | 38 | 687 |
+| 11 November rerun: every operation from 17:27 to 18:07 UTC, the 17:26 hourly run included | 20 | 471 |
+| 11 November rerun: the same, less that hourly run's own guard window | 8 | 260 |
 
-Measured from the hourly cost guard's month-to-date lines, with no extra queries. Some of these runs' reads fell inside an hourly window, so the net figure slightly undercounts them and the first row is the safe bound. These runs wrote nothing to R2: the guard read 2.13 to 2.14 GB stored that day, the growth being the hourly path's own writes. Every hourly guard check that day allowed its run, and every hourly and watchdog run succeeded. Cost: $0 (public-repository runners, no new services, no new accounts).
+Measured from the hourly cost guard's month-to-date lines, with no extra queries (the rerun from the 17:27 and 18:07 lines, which both allowed their runs). Some of the 5 November runs' reads fell inside an hourly window, so their net figure slightly undercounts them and the gross row is the safe bound. These runs wrote nothing to R2: the guard read 2.13 to 2.14 GB stored on 5 November and 2.38 GB on 11 November, the growth being the hourly path's own writes. Every hourly guard check on both days allowed its run, and every hourly and watchdog run succeeded. Cost: $0 (public-repository runners, no new services, no new accounts).
 
 ## Tests in CI
 
