@@ -54,7 +54,8 @@ export GE_HISTORY_DIR="$REPO/data/history"
 export GE_LAKE_ROOT="$REPO/data/runs"
 export GE_ORCHESTRATOR=airflow
 export GE_SPARK_THREADS=2 GE_SPARK_MEMORY=6g
-# End each task process once its record is committed: see GE_EXIT_HARD in src/ge_intel/cli.py.
+# End each task process, and the cost guard, once its work is committed: see exit_hard in
+# src/ge_intel/cli.py.
 export GE_EXIT_HARD=1
 
 "$VENV/bin/airflow" db migrate > "$AIRFLOW_HOME/migrate.log"
@@ -73,7 +74,7 @@ status=0
 # The records the tasks wrote: completion lives in storage, not only in Airflow. The second
 # run must have added none.
 "$REPO/.venv/bin/python" - "$GE_LAKE_ROOT" "$OUT" <<'EOF' || status=1
-import json, sys
+import json, os, sys
 from datetime import datetime
 from pathlib import Path
 from deltalake import DeltaTable
@@ -84,7 +85,7 @@ second = json.loads((out / "run2_run.json").read_text())["start_date"]
 since = datetime.fromisoformat(second.replace("Z", "+00:00"))
 added = [r for r in rows if r["started_at"] >= since]
 (out / "run2_new_task_records.json").write_text(json.dumps({"run2_start": second, "records_added": len(added)}))
-print(json.dumps({"task_records": len(rows), "added_by_run2": len(added)}))
-sys.exit(1 if added else 0)
+print(json.dumps({"task_records": len(rows), "added_by_run2": len(added)}), flush=True)
+os._exit(1 if added else 0)  # after a deltalake read: see exit_hard in src/ge_intel/cli.py
 EOF
 exit "$status"

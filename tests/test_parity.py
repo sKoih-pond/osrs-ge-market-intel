@@ -176,3 +176,35 @@ def test_flips_are_one_step_in_whole_cents_at_any_price(tmp_path):
             "source": "kaggle:antonygarand/osrs-ge-5m@v1",
         }
     ]
+
+
+def test_empty_prices_and_volumes_hide_no_difference(tmp_path):
+    """An hour with no trades on one side has that price empty in both builds; that must not
+    hide a difference beside it: a one-step flip is still a flip, a larger difference still an
+    error, and an empty volume against a number still a volume difference."""
+    a, b = rows(), rows()  # item 11 (indices 2, 5, 8 in January) has no high price
+    b[2]["avg_low_price"] += 0.01
+    b[5]["avg_low_price"] += 0.5
+    b[8]["high_volume"] = None
+    jan = compare(tmp_path, a, b)["by_month"]["2026-01"]
+    assert (jan["rounding_flips"], jan["price_errors"], jan["volume"]) == (1, 1, 1)
+    assert [s["item_id"] for s in jan["flip_samples"]] == [11]
+    assert not jan["equivalent"]
+
+
+def test_checksums_that_differ_where_every_row_matched_fail_the_month(tmp_path, monkeypatch):
+    """The keyed comparison and the checksums are computed separately. A month the comparison
+    calls exact must also checksum equal; if not, the comparison missed something."""
+    other = rows()
+    other[0]["high_volume"] += 1
+    real = parity.compare_month
+
+    def blind(con, a, b, month):
+        return {**real(con, a, b, month), "volume": 0, "equivalent": True, "exact": True}
+
+    monkeypatch.setattr(parity, "compare_month", blind)
+    found = compare(tmp_path, rows(), other)
+    jan = found["by_month"]["2026-01"]
+    assert jan["unexplained"] and not jan["equivalent"] and not jan["exact"]
+    assert not found["equivalent"] and found["months_unexplained"] == ["2026-01"]
+    assert found["by_month"]["2026-02"]["exact"] and not found["by_month"]["2026-02"]["unexplained"]

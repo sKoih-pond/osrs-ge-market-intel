@@ -99,9 +99,8 @@ def run_duckdb(files: list[Path], fills: Path, out: Path, threads: int, memory_g
     con.execute(f"SET memory_limit = '{memory_gb}GB'")
     con.execute(f"SET temp_directory = '{_q(tmp)}'")
     con.execute("SET preserve_insertion_order = false")
-    # The aggregate emits every month mixed, so each thread keeps a write buffer open per month:
-    # at the default 524,288 rows that is 68 x 4 buffers of about 40 MB, outside memory_limit,
-    # which took a 16 GB runner down. 100,000 rows keeps them near 2 GB.
+    # Lowered from the default 524,288 rows while the lost runners were being diagnosed (the
+    # cause was the string min/max, now a 0/1 code); kept so the published timings match.
     con.execute("SET partitioned_write_flush_threshold = 100000")
     listed = ", ".join(f"'{_q(f)}'" for f in files)
     con.execute(
@@ -367,8 +366,9 @@ def compare_outputs(reference: Path, run: Path, memory_gb: int, tmp: Path) -> di
         a, b = f"x.avg_{s}_price", f"y.avg_{s}_price"
         ca, cb = f"round({a} * 100)::BIGINT", f"round({b} * 100)::BIGINT"
         grid = f"{a} = {ca}::DOUBLE / 100 and {b} = {cb}::DOUBLE / 100"
-        flip = f"({a} <> {b} and abs({ca} - {cb}) = 1 and {grid})"
-        error = f"(({a} is null) <> ({b} is null) or ({a} <> {b} and not {flip}))"
+        # Never null: a price empty on both sides must not hide a difference beside it.
+        flip = f"coalesce({a} <> {b} and abs({ca} - {cb}) = 1 and {grid}, false)"
+        error = f"(({a} is null) <> ({b} is null) or ({a} is distinct from {b} and not {flip}))"
         return flip, error
 
     (hf, he), (lf, le) = side("high"), side("low")
@@ -399,7 +399,8 @@ def compare_outputs(reference: Path, run: Path, memory_gb: int, tmp: Path) -> di
             with x as (select * from ref where {cond_x}), y as (select * from run where {cond_y}),
                  j as (select x.*, y.item_id as y_item, {he} as e, {le} as e2, {hf} as f,
                               {lf} as f2,
-                              x.high_volume <> y.high_volume or x.low_volume <> y.low_volume as v,
+                              x.high_volume is distinct from y.high_volume
+                                or x.low_volume is distinct from y.low_volume as v,
                               x.regime_id is distinct from y.regime_id
                                 or x.source is distinct from y.source as l
                        from x full outer join y

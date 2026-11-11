@@ -1,9 +1,10 @@
 """History backfill and reprocessing, one month per mapped task (ADR-0004, amended).
 
-Every task is a call to the task contract, `ge-intel run <task> --start --end`: Airflow
-schedules, retries and records; the tasks hold the logic and record completion in storage, so
-a second run of the DAG finds every month complete and skips it. Triggered by hand with the
-month range as parameters (Airflow 3 gives a manual run no data interval).
+Every task but two is a call to the task contract, `ge-intel run <task> --start --end`
+(`cost_guard` runs `ge-intel guard`, and `month_list` turns the parameters into months):
+Airflow schedules, retries and records; the tasks hold the logic and record completion in
+storage, so a second run of the DAG finds every month complete and skips it. Triggered by
+hand with the month range as parameters (Airflow 3 gives a manual run no data interval).
 
     cost_guard -> history_download -> history_pull -> month_list
       -> month[i]: build_1h_duckdb, reprocess_1h_spark -> parity_1h     (one group per month)
