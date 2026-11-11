@@ -12,6 +12,7 @@ import json
 import shutil
 from datetime import UTC, datetime, timedelta
 
+import pyarrow as pa
 import pytest
 from conftest import FIXTURE_END, FIXTURE_NOW, make_context
 
@@ -20,6 +21,7 @@ from ge_intel.build import SNAPSHOT, RebuildRefused, hour_scope
 from ge_intel.lake import content_hash
 from ge_intel.maintain import PROPOSED
 from ge_intel.ops import TASK_RUNS
+from ge_intel.policies import CASUAL_V1
 
 HOUR_START = FIXTURE_END - timedelta(hours=1)
 WEEKLY_END = datetime(2026, 11, 23, tzinfo=UTC)  # the first weekly run that deletes rows
@@ -105,6 +107,24 @@ def test_a_forced_run_of_the_newest_hour_rebuilds_it_as_before(lake, monkeypatch
     before = content_hash(ctx.lake.read(SNAPSHOT), KEYS)
     assert tasks.hourly(ctx, FIXTURE_END, force=True) == 0
     assert content_hash(ctx.lake.read(SNAPSHOT), KEYS) == before
+
+
+def test_a_rebuild_never_replaces_another_policys_rows(lake):
+    ctx = make_context(lake)
+    other = ctx.lake.read(SNAPSHOT).slice(0, 3)
+    other = other.set_column(
+        other.schema.get_field_index("policy_id"),
+        "policy_id",
+        pa.array(["other-v1"] * other.num_rows, pa.string()),
+    )
+    ctx.lake.write(SNAPSHOT, other, mode="append")
+    casual = [("policy_id", "=", CASUAL_V1.id)]
+    before = content_hash(ctx.lake.read(SNAPSHOT, filters=casual), KEYS)
+    rows: list[dict] = []
+    tasks.run_task(ctx, "build_snapshot", HOUR_START, FIXTURE_END, force=True, rows=rows)
+    assert content_hash(ctx.lake.read(SNAPSHOT, filters=casual), KEYS) == before
+    kept = ctx.lake.read(SNAPSHOT, filters=[("policy_id", "=", "other-v1")])
+    assert content_hash(kept, KEYS) == content_hash(other, KEYS)
 
 
 def test_after_the_weekly_retention_a_forced_rebuild_is_refused(lake):

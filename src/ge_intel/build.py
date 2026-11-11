@@ -37,9 +37,17 @@ class RebuildRefused(RuntimeError):
 
 
 def hour_scope(end: datetime) -> tuple[str, list[tuple]]:
-    """The rows one build replaces, as the write's replace-where predicate and as read filters."""
-    predicate = f"snapshot_date = '{end.date().isoformat()}' AND snapshot_at = '{sql_ts(end)}'"
-    filters = [("snapshot_date", "=", end.date()), ("snapshot_at", "=", end)]
+    """The rows one build replaces, as the write's replace-where predicate and as read filters:
+    the hour under this build's policy, so a build never replaces another policy's rows."""
+    predicate = (
+        f"snapshot_date = '{end.date().isoformat()}' AND snapshot_at = '{sql_ts(end)}' "
+        f"AND policy_id = '{CASUAL_V1.id}'"
+    )
+    filters = [
+        ("snapshot_date", "=", end.date()),
+        ("snapshot_at", "=", end),
+        ("policy_id", "=", CASUAL_V1.id),
+    ]
     return predicate, filters
 
 
