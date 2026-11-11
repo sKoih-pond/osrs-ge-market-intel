@@ -12,7 +12,7 @@ CSS only. No markup, script or data change.
 
 - `.idea` is a size container (`container-type: inline-size`), and its text may wrap anywhere as a last resort (`overflow-wrap: anywhere`), so nothing can run past the card.
 - Below 14rem inside the card, each label sits above its value. A label beside its value needs about 14rem: the widest label (6rem), the gap, and a price with its unit (7rem). At 100% text a card is about 15.9rem wide inside, both at 320 px and at its narrowest in the multi-column grid, so the 100% layout does not change.
-- Below 7.5rem (320 px from about 180% text) the Net figure steps from 1.375rem to 1.125rem. That keeps a seven-digit amount whole instead of breaking it mid-number, and leaves the figure above body size.
+- Every text keeps scaling with the reader's text size. No font size changes at a breakpoint.
 - The status page's `.facts` lists have no `.idea` around them, so none of this reaches them (see "Found, not changed").
 
 ## How it was measured
@@ -57,11 +57,15 @@ To test values the measured hour did not have, the local snapshot was edited:
 - a Net of 12,345,678 GP and another of 3,456,789 GP;
 - prices of 49,999,999 and 51,234,567 GP;
 - the name `Superantipoisonplusplusmixturebottle(4)`;
-- a Data grade reason containing a 40-character unbroken word.
+- a Data grade reason containing a 45-character unbroken word.
 
 No card or page content passed an edge at any step at either width.
 
-One residual: at 320 px and 200% only, the eight-digit Net wraps inside the number (`12,345,67` / `8 GP`). In practice this can't happen. A Net of 10M GP needs roughly a 20% net return on the whole 50M GP capital in one trade, and the largest Net in the measured hour is 592,626 GP. Seven-digit Nets stay whole.
+**One residual, at 320 px only.** A Net of 1,000,000 GP or more wraps inside the number from 190% text, and an eight-digit Net from 180%. For example, `12,345,67` / `8 GP`. Nothing is clipped. At 375 px, every stress Net stays whole up to 200%. In the measured hour the largest Net is 592,626 GP, which stays whole at 320 px and 200%.
+
+There are two ways to close the residual:
+- **A smaller Net figure in very narrow cards.** One rule, `@container (width < 7.5rem) { .net { font-size: 1.125rem } }`, keeps seven-digit amounts whole. The cost: the Net figure would be the one text that doesn't reach 200%. It would shrink from 37 px to 32 px between 170% and 180% text, and sit at 36 px rather than 44 px at 200%. It was tried and left out for that reason.
+- **Break opportunities after the thousands separators.** Add them in `app.js` (for example `<wbr>`), so a long number wraps only at a comma. That is a script change on the page the hourly run deploys, so it is left as a possible follow-up.
 
 ### Other checks
 

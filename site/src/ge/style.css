@@ -107,11 +107,6 @@ nav a { display: inline-block; padding: 0.625rem 0; }
   .facts { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
   .facts dd + dt { margin-top: 0.5rem; }
 }
-/* Narrower still (320 px from about 180% text) a seven-digit Net figure would break
-   mid-number at full size. A step down keeps it whole and still above body size. */
-@container (width < 7.5rem) {
-  .net { font-size: 1.125rem; }
-}
 
 .defs dt { font-weight: 600; margin-top: 0.75rem; }
 .defs dd { margin: 0.25rem 0 0; max-width: 42rem; }
