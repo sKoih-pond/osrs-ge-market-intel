@@ -55,5 +55,7 @@ def test_reprocess_and_benchmark_only_read():
     parity = steps()["Parity with the DuckDB build and R2"]
     assert parity["if"] == "inputs.step == 'reprocess'" and "--r2" in parity["run"]
     assert "R2_ACCESS_KEY_ID" in parity["env"] and "CLOUDFLARE_ANALYTICS_TOKEN" not in parity["env"]
+    # The report is copied even when parity fails, and the step still fails then.
+    assert "|| status=$?" in parity["run"] and parity["run"].rstrip().endswith('exit "$status"')
     doc = load("history.yml")
     assert doc["jobs"]["run"]["runs-on"] == "ubuntu-24.04"  # one image: timings compare

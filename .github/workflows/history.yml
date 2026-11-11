@@ -161,9 +161,13 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        # The full report is kept whatever the verdict: a failed parity is when it is needed.
         run: |
-          uv run ge-intel history parity --r2-files
-          cp data/history/parity.json data/evidence/
+          status=0
+          uv run ge-intel history parity --r2-files || status=$?
+          mkdir -p data/evidence
+          cp data/history/parity.json data/evidence/ || true
+          exit "$status"
       - name: Benchmark DuckDB, Polars and PySpark
         if: inputs.step == 'benchmark'
         run: |

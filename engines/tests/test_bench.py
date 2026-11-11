@@ -93,3 +93,15 @@ def test_a_run_that_differs_is_caught_and_a_one_step_flip_is_not(tmp_path):
     output(tmp_path / "dup", [row, other, other])
     found = bench.compare_outputs(tmp_path / "ref", tmp_path / "dup", 1, tmp_path / "t")
     assert not found["equivalent"] and found["duplicates"] == 1
+
+
+def test_empty_prices_and_volumes_hide_no_difference(tmp_path):
+    row = ["2026-01-01 00:00:00+00", "2026-01", 2, None, 5, 99.5, 3, "r", "s"]  # no high trades
+    other = [*row[:2], 3, 100.25, *row[4:]]
+    output(tmp_path / "ref", [row, other])
+    output(tmp_path / "flip", [[*row[:5], 99.51, *row[6:]], other])
+    found = bench.compare_outputs(tmp_path / "ref", tmp_path / "flip", 1, tmp_path / "t")
+    assert found["equivalent"] and found["rounding_flips"] == 1
+    output(tmp_path / "vol", [[*row[:4], None, *row[5:]], other])
+    found = bench.compare_outputs(tmp_path / "ref", tmp_path / "vol", 1, tmp_path / "t")
+    assert not found["equivalent"] and found["volume"] == 1
