@@ -40,7 +40,10 @@ required-version = ">=0.13"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-q"
+# Spark tests need Java 17 and the engines environment; CI runs them in their own job
+# (`pytest -m spark`).
+addopts = "-q -m 'not spark'"
+markers = ["spark: needs Java 17 and the engines environment (engines/)"]
 
 [tool.ruff]
 line-length = 100
