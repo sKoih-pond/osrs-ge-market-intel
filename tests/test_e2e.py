@@ -72,6 +72,20 @@ def test_snapshot_mart_applies_tax_and_limits(run):
             assert r["data_grade"] in "AB" and r["net_gp"] > 0
 
 
+def test_bond_keeps_its_row_and_grade_but_is_never_an_idea(run):
+    rows = {r["item_id"]: r for r in run["ctx"].lake.read(SNAPSHOT).to_pylist()}
+    bond = rows[13190]
+    # The fixture hour reproduces the live case: grade A, untaxed, a large positive net GP.
+    assert bond["data_grade"] == "A" and bond["tax_per_item"] == 0 and bond["net_gp"] > 0
+    assert bond["is_idea"] is False and bond["idea_rank"] is None
+    ranks = sorted(r["idea_rank"] for r in rows.values() if r["is_idea"])
+    assert ranks == list(range(1, len(ranks) + 1))
+    assert all(r["idea_rank"] is None for r in rows.values() if not r["is_idea"])
+    snapshot = json.loads((run["dist"] / "ge" / "data" / "v1" / "snapshot.json").read_text())
+    assert 13190 not in {i["item_id"] for i in snapshot["ideas"]}
+    assert snapshot["counts"]["ideas"] == len(ranks)
+
+
 def test_rerun_is_a_no_op(run):
     ctx = make_context(run["root"])
     versions = {t: ctx.lake.table(t).version() for t in (ingest.PRICES, ingest.BUCKETS, SNAPSHOT)}
