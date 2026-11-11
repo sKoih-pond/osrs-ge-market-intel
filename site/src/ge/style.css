@@ -70,6 +70,8 @@ nav a { display: inline-block; padding: 0.625rem 0; }
 .ideas { list-style: none; padding: 0; margin: 0; display: grid; gap: 1rem; grid-template-columns: repeat(auto-fill, minmax(min(100%, 18rem), 1fr)); }
 
 .idea {
+  container-type: inline-size; /* the card's own width decides the layout of its facts */
+  overflow-wrap: anywhere; /* a long name or number wraps inside the card, never past it */
   background: var(--surface);
   border: 1px solid var(--separator);
   border-radius: var(--radius);
@@ -95,6 +97,16 @@ nav a { display: inline-block; padding: 0.625rem 0; }
 .facts { display: grid; grid-template-columns: fit-content(50%) 1fr; gap: 0.25rem 0.75rem; margin: 0; }
 .facts dt { color: var(--text-muted); }
 .facts dd { margin: 0; font-variant-numeric: tabular-nums; }
+
+/* Enlarged text on a phone (from about 120% at 320 px, 130% at 375 px). A label beside
+   its value needs about 14rem: the widest label (6rem), the gap, and a price with its
+   unit (7rem). Narrower cards put each label above its value. At 100% text a card is
+   about 15.9rem wide inside at 320 px and at its narrowest in the multi-column grid,
+   so it stays as it was. */
+@container (width < 14rem) {
+  .facts { grid-template-columns: minmax(0, 1fr); row-gap: 0; }
+  .facts dd + dt { margin-top: 0.5rem; }
+}
 
 .defs dt { font-weight: 600; margin-top: 0.75rem; }
 .defs dd { margin: 0.25rem 0 0; max-width: 42rem; }
