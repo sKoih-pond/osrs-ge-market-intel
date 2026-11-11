@@ -144,6 +144,14 @@ def test_a_dispatch_with_an_old_end_and_force_fails_before_publishing(lake, caps
     events = [json.loads(line) for line in capsys.readouterr().out.splitlines()]
     assert events[-1]["outcome"] == "failed" and events[-1]["failed_task"] == "build_snapshot"
     assert "publish" not in {e["task"] for e in events if e["event"] == "task_started"}
+    # The refusal's failed row does not undo the hour's success, so the same run without
+    # `force` skips the hour instead of rebuilding it unchecked.
+    ctx.cache.clear()
+    version = ctx.lake.table(SNAPSHOT).version()
+    rows: list[dict] = []
+    skipped = tasks.run_task(ctx, "build_snapshot", HOUR_START, FIXTURE_END, force=False, rows=rows)
+    assert skipped == {"status": "complete"}
+    assert ctx.lake.table(SNAPSHOT).version() == version
 
 
 def test_an_old_hour_holding_its_ideas_is_refused_with_its_latest_rows_kept(lake):
