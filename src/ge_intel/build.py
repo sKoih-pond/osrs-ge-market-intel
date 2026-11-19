@@ -2,7 +2,9 @@
 
 dbt builds into a throwaway DuckDB file on the runner; the gold table is written by delta-rs
 with replace-where on the snapshot hour, never by DuckDB `INSERT` (spike S1 rule 3), so a
-re-run replaces the hour instead of appending a copy.
+re-run replaces the hour instead of appending a copy. A forced rebuild of an hour older than the
+newest closed hour is refused when it would regrade the hour or overwrite its idea rows
+(`refuse_old_rebuild`, ADR-0019 amendment of 12 November 2026).
 """
 
 from __future__ import annotations
@@ -17,9 +19,9 @@ from pathlib import Path
 
 import duckdb
 
-from ge_intel.ingest import BUCKETS, Context
+from ge_intel.ingest import BUCKETS, LATEST, Context
 from ge_intel.policies import CASUAL_V1, DATA_GRADE_V2
-from ge_intel.timegrid import FIVE_MIN, grid, iso, sql_ts
+from ge_intel.timegrid import FIVE_MIN, HOUR, grid, iso, sql_ts
 
 DBT_DIR = Path(__file__).resolve().parents[2] / "dbt"
 SNAPSHOT = "gold/market_snapshot"
@@ -28,6 +30,25 @@ WINDOW = timedelta(hours=24)
 
 class UpstreamIncomplete(RuntimeError):
     """The hour's buckets are not all recorded yet; the next run will catch up first."""
+
+
+class RebuildRefused(RuntimeError):
+    """A forced rebuild of an old hour would regrade it or overwrite its idea rows."""
+
+
+def hour_scope(end: datetime) -> tuple[str, list[tuple]]:
+    """The rows one build replaces, as the write's replace-where predicate and as read filters:
+    the hour under this build's policy, so a build never replaces another policy's rows."""
+    predicate = (
+        f"snapshot_date = '{end.date().isoformat()}' AND snapshot_at = '{sql_ts(end)}' "
+        f"AND policy_id = '{CASUAL_V1.id}'"
+    )
+    filters = [
+        ("snapshot_date", "=", end.date()),
+        ("snapshot_at", "=", end),
+        ("policy_id", "=", CASUAL_V1.id),
+    ]
+    return predicate, filters
 
 
 def dbt_vars(lake_root: str, end: datetime) -> dict:
@@ -92,6 +113,40 @@ def require_hour_recorded(ctx: Context, start: datetime, end: datetime) -> None:
         )
 
 
+def refuse_old_rebuild(ctx: Context, start: datetime, end: datetime) -> None:
+    """Refuse a forced rebuild of an hour before the newest closed hour (`run_task` calls this
+    only then) if its /latest rows are gone or it already holds idea rows.
+
+    /latest has no timestamp parameter, so an hour's rows are never fetched again, and rule B1
+    (ADR-0019) drops them after 30 days. Without them the mart has no minutes since the last
+    trade, and a rebuild silently regrades the hour (a scratch run went from A17/B7/C42 to
+    A0/B26/C40). The idea rows are the paper record (AT7) and outlive the rest of the hour's
+    rows (rule A1), so a rebuild must not replace them either. The window is `stg_latest`'s."""
+    reasons = []
+    latest = ctx.lake.read(
+        LATEST,
+        columns=["snapshot_at"],
+        filters=[
+            ("snapshot_date", ">=", (end - HOUR).date()),
+            ("snapshot_date", "<=", end.date()),
+            ("snapshot_at", ">=", end - HOUR),
+            ("snapshot_at", "<=", end),
+        ],
+    )
+    if latest is None or latest.num_rows == 0:
+        reasons.append("its /latest rows are gone, so the rebuild would regrade it")
+    ideas = ctx.lake.read(
+        SNAPSHOT, columns=["item_id"], filters=[*hour_scope(end)[1], ("is_idea", "=", True)]
+    )
+    if ideas is not None and ideas.num_rows:
+        reasons.append(f"it holds {ideas.num_rows} idea rows, the paper record (AT7)")
+    if reasons:
+        raise RebuildRefused(
+            f"refused: a forced rebuild of the hour ending {iso(end)}, older than the newest "
+            f"closed hour: {'; '.join(reasons)} (docs/runbook.md, Storage and retention)"
+        )
+
+
 def build_snapshot(ctx: Context, start: datetime, end: datetime) -> dict:
     require_hour_recorded(ctx, end - timedelta(hours=CASUAL_V1.price_window_hours), end)
     with tempfile.TemporaryDirectory(prefix="ge-dbt-") as tmp:
@@ -110,7 +165,7 @@ def build_snapshot(ctx: Context, start: datetime, end: datetime) -> dict:
     ctx.lake.write(
         SNAPSHOT,
         table,
-        predicate=f"snapshot_date = '{end.date().isoformat()}' AND snapshot_at = '{sql_ts(end)}'",
+        predicate=hour_scope(end)[0],
         partition_by=["snapshot_date"],
         metadata=ctx.metadata("build_snapshot", start, end),
         schema_mode="merge",  # the mart may gain columns, e.g. a new grade input

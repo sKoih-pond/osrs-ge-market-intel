@@ -150,6 +150,19 @@ Accepted by Sylvester ("Yes go", 3 November 2026) after the second weekly run wi
 
 **Still open.** A backlog of several days is again one long step. A pause adds none (nothing writes while `hourly` is off or the guard halts it); it builds only when runs keep committing without finishing `compact_daily`, for example when an earlier task fails in every run. The runbook says how to check for one and clear it by hand.
 
+### Amendment (12 November 2026): forced rebuilds of old hours are refused
+
+Proposed on 12 November 2026, before the first run that deletes rows (23 November); not yet accepted.
+
+**What was found.** `build_snapshot` never checked that `stg_latest` returned rows, and its replace-where predicate covered only `snapshot_date` and `snapshot_at`. Once rule B1 has dropped an hour's /latest day, a forced rebuild of that hour (`ge-intel run build_snapshot --force`, or the `hourly` dispatch inputs `end` and `force`) builds the mart with no minutes since the last trade and replaces every row of the hour, the kept idea rows included. On a scratch lake one hour went from 17 grade A, 7 B and 42 C rows to 0 A, 26 B and 40 C. /latest has no timestamp parameter, so the lost input cannot be fetched again. Both triggers are manual; nothing scheduled rebuilds an old hour.
+
+**Decision.**
+- **A forced build of an hour before the newest closed hour is refused** (`build.RebuildRefused`) when no /latest row has `snapshot_at` in the hour's `stg_latest` window (the hour end and the hour before it), or when the hour already holds idea rows (the paper record, AT7). The refusal is a failed `build_snapshot` row in `ops/task_runs` with the reason, and gold is not written. `run_task` calls the check (`Task.refuse_old`) only for forced runs of old hours, so the scheduled path and the newest closed hour, forced or not, read nothing extra and behave as before.
+- **The replace-where predicate adds `policy_id`**, so a build replaces only its own policy's rows for the hour. Every row has carried `policy_id` since the mart's first commit, so the predicate matches the same rows as before.
+- **No override.** Regrading an old hour is a new grade or policy version written beside its rows, in a reviewed pull request, not a rebuild over them.
+
+**Still open.** An unforced build of an old hour that `ops/task_runs` does not record as complete (a run killed after the build wrote gold) is not checked. The runbook says not to dispatch `end` for an hour older than 30 days.
+
 ## Consequences
 
 - **The paper record:** every idea is kept as recorded, for ever. Rows that were not ideas (grade C, or no positive net GP) older than 30 to 37 days are gone and cannot be rebuilt, because `/latest` and bronze expire after 30 days too. Each hour's counts survive in `ops/task_runs` (the `build_snapshot` detail: rows written, ideas, grades).
@@ -179,5 +192,5 @@ Accepted by Sylvester ("Yes go", 3 November 2026) after the second weekly run wi
 
 ## References
 
-- Code: `src/ge_intel/maintain.py` (`Retention`, `apply_retention`), `src/ge_intel/lake.py` (`Lake.delete`, `CHECKPOINT_EVERY`). Tests: `tests/test_retention.py`, `tests/test_lake.py`, `tests/test_e2e.py`.
+- Code: `src/ge_intel/maintain.py` (`Retention`, `apply_retention`), `src/ge_intel/lake.py` (`Lake.delete`, `CHECKPOINT_EVERY`), `src/ge_intel/build.py` (`refuse_old_rebuild`, `hour_scope`). Tests: `tests/test_retention.py`, `tests/test_lake.py`, `tests/test_e2e.py`, `tests/test_rebuild_guard.py`.
 - Evidence: `docs/research/probes/log_growth.py`, `docs/research/probes/storage_projection.py`; spike S1 (`docs/spikes/S1_results.md`, rule 2); `docs/plans/M2.md` section 8; `docs/kickoff/acceptance_tests.md` (AT7).

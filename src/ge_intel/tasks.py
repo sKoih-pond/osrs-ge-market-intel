@@ -17,7 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from ge_intel import ingest, maintain, ops, publish, wiki
-from ge_intel.build import build_snapshot
+from ge_intel.build import build_snapshot, refuse_old_rebuild
 from ge_intel.ingest import Context
 from ge_intel.timegrid import DAY, HOUR, floor, iso
 
@@ -44,6 +44,9 @@ class Task:
     cadence: str  # gap-fill | hourly | daily | weekly
     writes: tuple[str, ...]
     skip_if_complete: bool = True
+    # Runs before a forced run of an interval that ends before the newest closed hour, and
+    # raises to refuse it. Never runs for an unforced task or for the newest closed hour.
+    refuse_old: Callable[[Context, datetime, datetime], None] | None = None
 
 
 REGISTRY: dict[str, Task] = {
@@ -65,6 +68,7 @@ REGISTRY: dict[str, Task] = {
             ("ingest_mapping", "ingest_5m", "ingest_latest"),
             "hourly",
             ("gold/market_snapshot",),
+            refuse_old=refuse_old_rebuild,  # ADR-0019 amendment of 12 November 2026
         ),
         Task("publish", publish.publish, ("build_snapshot",), "hourly", ()),
         Task("check_duplicates", maintain.check_duplicates, ("ingest_5m",), "daily", ()),
@@ -103,6 +107,8 @@ def run_task(
     log("task_started", task=name, start=iso(start), end=iso(end))
     status, detail = "success", {}
     try:
+        if force and task.refuse_old and end < newest_closed_hour(ctx.now()):
+            task.refuse_old(ctx, start, end)
         detail = task.fn(ctx, start, end) or {}
         status = detail.pop("status", "success")
         return {"status": status, **detail}
