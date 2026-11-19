@@ -35,7 +35,7 @@ Wiki API v2 ──> ingest (/5m gap-fill, /latest, /mapping) ──> R2: bronze 
 | `docs/plans/` | Milestone plans (M2: historical foundation) |
 | `docs/runbook.md`, `docs/data_contract.md` | Operating the pipeline; the published v1 contract |
 | `src/ge_intel/` | Pipeline package: Wiki client, ingestion, lake, tasks and CLI, tax, cost guard, publish, watchdog |
-| `src/ge_intel/seeds/` | Regimes and the era-aware tax-exemption list, read by Python and dbt |
+| `src/ge_intel/seeds/` | Regimes, the era-aware tax-exemption list and the items that are never ideas, read by Python and dbt |
 | `dbt/` | dbt-duckdb project: staging views over the Delta tables and the `market_snapshot` mart |
 | `contracts/v1/` | JSON Schemas for the published files |
 | `site/` | The page (`src/`) and the assets-only Worker config |

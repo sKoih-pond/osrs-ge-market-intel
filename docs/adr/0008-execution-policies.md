@@ -4,6 +4,8 @@
 - **Date:** 2026-10-20
 - **Decided by:** Sylvester (kickoff decision 6)
 
+> **Amendment (12 November 2026): an idea must be one that can be re-sold as bought.** Every policy's net result assumes the item bought can be sold again unchanged, with only the tax in between (ADR-0007). A bond breaks that: any transfer, a Grand Exchange purchase included, makes it untradeable, and converting it back costs 10% of its GE value. Its untaxed spread therefore ranked among the top Casual ideas (11 November 2026: first at 17:00 UTC with 694,256 GP for 4, second at 18:00 UTC with 551,848 GP) while the real round trip loses about 0.9M GP per bond. Items like this are listed in `src/ge_intel/seeds/not_flippable.csv` (item id, name, reason, Wiki source). It holds only the Old school bond, the only such item found on the Wiki on 12 November 2026; a row needs a citation. The mart keeps their rows and Data grade but never sets `is_idea` and gives no `idea_rank`; the dbt test `assert_not_flippable_never_an_idea` checks it on every build. No policy parameter changes, so `policy_id` stays `casual-v1` (confirmed by Sylvester, 12 November 2026); the seed, not a new version, marks which rows were never tradeable as ideas. The rule is forward-only: bond idea rows already in `gold/market_snapshot` stay as written, and the paper-record scoring (M4) flags them by joining the seed instead of rewriting them. New bond rows are non-ideas, so they fall under the 30-day rule (ADR-0019). The published contract is unchanged (1.0.0).
+
 ## Context
 
 The GE shows no order book, so whether an offer would have filled must be simulated. Profit labels, backtests, rankings and the live paper record all depend on the simulation's rules, so the rules must be explicit, versioned and published. Sylvester chose Casual as the default with Flipper and Holder as alternatives on a three-way switch.
@@ -48,3 +50,4 @@ An **execution policy** is a versioned rule set with id `<persona>-v<n>`. Every 
 ## References
 
 - Discovery report sections 5.2 to 5.5.
+- Old school bond (transfer makes it untradeable; 10% conversion fee): https://oldschool.runescape.wiki/w/Old_school_bond

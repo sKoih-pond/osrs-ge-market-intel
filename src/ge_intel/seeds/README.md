@@ -6,3 +6,4 @@ Reference data read by both the Python package and the dbt project (`dbt/dbt_pro
 |---|---|---|
 | `regimes.csv` | Measurement, tax and market-rule regimes (ADR-0006). Boundaries are at 00:00 UTC on the update day, the same approximation as the tax eras (ADR-0007). | Hand-edited; a new row needs no code change |
 | `tax_exemptions.csv` | Items exempt from the GE tax and the era each exemption starts in (ADR-0007): the 9 Dec 2021 list and the 29 May 2025 additions | `scripts/build_tax_exemptions.py` from a `/mapping` snapshot |
+| `not_flippable.csv` | Items that cannot be bought and re-sold as bought, so they are never ideas (ADR-0008 amendment): item id, name, reason, Wiki source. Only the Old school bond as of 12 Nov 2026 | Hand-edited; a row needs a Wiki citation and no code change |

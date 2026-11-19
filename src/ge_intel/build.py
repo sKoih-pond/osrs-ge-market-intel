@@ -98,13 +98,8 @@ def build_snapshot(ctx: Context, start: datetime, end: datetime) -> dict:
         db_path = run_dbt(ctx.lake.root, end, Path(tmp))
         with duckdb.connect(str(db_path), read_only=True) as con:
             con.execute("SET TimeZone = 'UTC'")
-            table = con.sql(
-                "select *, data_grade in ('A', 'B') and net_gp > 0 as is_idea, "
-                "case when data_grade in ('A', 'B') and net_gp > 0 then "
-                "row_number() over (partition by data_grade in ('A', 'B') and net_gp > 0 "
-                "order by net_gp desc, item_id) end as idea_rank "
-                "from main.market_snapshot order by item_id"
-            ).arrow()
+            # is_idea and idea_rank come from the mart, where dbt tests them.
+            table = con.sql("select * from main.market_snapshot order by item_id").arrow()
     if hasattr(table, "read_all"):
         table = table.read_all()
     ctx.lake.write(
