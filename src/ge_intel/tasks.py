@@ -86,9 +86,16 @@ def log(event: str, **fields) -> None:
 
 
 def run_task(
-    ctx: Context, name: str, start: datetime, end: datetime, *, force: bool, rows: list
+    ctx: Context,
+    name: str,
+    start: datetime,
+    end: datetime,
+    *,
+    force: bool,
+    rows: list,
+    registry: dict[str, Task] = REGISTRY,
 ) -> dict:
-    task = REGISTRY[name]
+    task = registry[name]
     if end <= start:
         raise ValueError(f"empty interval {iso(start)} to {iso(end)}")
     if (
