@@ -52,3 +52,28 @@ jobs:
         env:
           WRANGLER_SEND_METRICS: "false"
         run: npx --prefix site --no-install wrangler deploy --dry-run --config clock/wrangler.jsonc
+
+  # The batch engines (engines/, ADR-0011 amended): their unit tests, the three-engine benchmark
+  # on synthetic data, and the PySpark rebuild against the DuckDB build on the fixture month.
+  spark:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.12"
+          enable-cache: true
+      - run: uv sync --locked --extra dev
+      - run: uv sync --locked --extra dev --project engines
+      - name: Engine tests
+        working-directory: engines
+        run: uv run pytest
+      - name: PySpark against the DuckDB build
+        run: uv run pytest -m spark

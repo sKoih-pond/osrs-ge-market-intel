@@ -1,0 +1,40 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+# The batch engines: an independent PySpark rebuild of history/prices_1h and the DuckDB, Polars
+# and PySpark benchmark of the same job (ADR-0011, amended). A project of its own, with its own
+# lockfile, so the hourly path's `uv sync --locked` never installs PySpark or Polars, and
+# delta-spark's pins (pyspark 4.2.0, importlib-metadata 8.7.1 at most) never meet dbt's.
+[project]
+name = "ge-intel-engines"
+version = "0.1.0"
+description = "Batch engines for the OSRS GE history: PySpark reprocessing and an engine benchmark."
+requires-python = ">=3.12"
+authors = [{ name = "Sylvester Koh" }]
+license = "MIT"
+dependencies = [
+    # The pairing proven in spike S1: delta-spark 4.4.1 accepts pyspark 4.2.0 at most.
+    "pyspark==4.2.0",
+    "delta-spark==4.4.1",
+    "polars==2.1.0",
+    # The same DuckDB as the production build (root pyproject), so the benchmark measures it.
+    "duckdb==1.5.6",
+]
+
+[project.scripts]
+ge-spark = "ge_engines.spark_job:main"
+ge-bench = "ge_engines.bench:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ge_engines"]
+
+[tool.uv]
+required-version = ">=0.13"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"

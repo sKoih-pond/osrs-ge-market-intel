@@ -6,9 +6,11 @@
     ge-intel gaps [--start <UTC>] [--end <UTC>]
     ge-intel tasks
     ge-intel history plan|download|build|check-1h|fill|upload|pull|push [--dry-run] [--limit N]
+    ge-intel history parity [--against DIR] [--r2] [--r2-files]
 
-Exit codes: 0 committed success; 1 a task failed; 2 R2 usage unreadable; 3 halted by the
-cost guard; 4 a history step's inputs are not ready. Logs are JSON lines on stdout.
+Exit codes: 0 committed success; 1 a task failed, or two builds are not equivalent; 2 R2 usage
+unreadable; 3 halted by the cost guard; 4 a history step's inputs are not ready. Logs are JSON
+lines on stdout.
 """
 
 from __future__ import annotations
@@ -21,14 +23,24 @@ import traceback
 from datetime import UTC, datetime
 from pathlib import Path
 
-from ge_intel import cost_guard, history, ingest, kaggle, ops, tasks
+from ge_intel import cost_guard, history, ingest, kaggle, ops, parity, tasks
 from ge_intel.cost_guard import RunBudget
 from ge_intel.ingest import Context
 from ge_intel.lake import Lake
 from ge_intel.timegrid import iso, parse_utc
 from ge_intel.wiki import WikiClient
 
-HISTORY_STEPS = ("plan", "download", "build", "check-1h", "fill", "upload", "pull", "push")
+HISTORY_STEPS = (
+    "plan",
+    "download",
+    "build",
+    "check-1h",
+    "fill",
+    "upload",
+    "pull",
+    "push",
+    "parity",
+)
 
 
 def context(budget: RunBudget | None = None) -> Context:
@@ -81,7 +93,14 @@ def guard(ctx: Context) -> int:
     return 0 if allowed else 3
 
 
-def run_history(step: str, dry_run: bool, limit: int | None) -> int:
+def run_history(
+    step: str,
+    dry_run: bool,
+    limit: int | None,
+    against: Path | None = None,
+    r2: bool = False,
+    r2_files: bool = False,
+) -> int:
     """The M2 history job (ADR-0018), run only on request: downloads, Wiki requests and the
     upload are Sylvester's to start, or an agent's he has asked (docs/kickoff/delegation_plan.md,
     ADR-0020). It runs on a throwaway GitHub runner (`history` workflow) or the laptop; `pull`
@@ -103,6 +122,15 @@ def run_history(step: str, dry_run: bool, limit: int | None) -> int:
             report = history.fill(h, dry_run=dry_run, limit=limit)
         elif step == "pull":
             report = history.pull_raw(h, Lake.from_env(RunBudget()))
+        elif step == "parity":  # reads only: this build, another engine's, R2's if asked
+            report = parity.run(
+                h,
+                against or h.root / "spark",
+                r2=Lake.from_env(RunBudget()) if r2 or r2_files else None,
+                r2_files=r2_files,
+            )
+            tasks.log("history", step=step, report=report)
+            return 0 if parity.agrees(report) else 1
         else:  # push or upload: writes to the lake, behind the cost guard on R2
             target = Lake.from_env(RunBudget())
             stored_bytes = None
@@ -155,10 +183,15 @@ def main(argv: list[str] | None = None) -> int:
     hist.add_argument("step", choices=HISTORY_STEPS)
     hist.add_argument("--dry-run", action="store_true", help="report only; send and write nothing")
     hist.add_argument("--limit", type=int, help="fill: at most this many buckets")
+    hist.add_argument("--against", type=Path, help="parity: the other build (default <dir>/spark)")
+    hist.add_argument("--r2", action="store_true", help="parity: also R2's counts (read only)")
+    hist.add_argument("--r2-files", action="store_true", help="parity: also R2's own files")
     args = ap.parse_args(argv)
 
     if args.cmd == "history":
-        return run_history(args.step, args.dry_run, args.limit)
+        return run_history(
+            args.step, args.dry_run, args.limit, args.against, args.r2, args.r2_files
+        )
 
     if args.cmd == "tasks":
         print(
